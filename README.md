@@ -54,6 +54,7 @@ Options:
   -r, --repo-path PATH      Path to repository (default: current directory)
   -o, --config-output PATH  Output path for config (default: apisec-config.yaml)
   -m, --model TEXT          LLM model to use (default: gpt-4)
+  --api-key TEXT            OpenAI API key (or set OPENAI_API_KEY env var)
   -v, --verbose             Enable verbose output
   --help                    Show this message and exit
 ```
@@ -69,8 +70,46 @@ Options:
   -r, --repo TEXT           GitHub repository (owner/repo) [required]
   -b, --branch TEXT         Branch name (default: apisec-config)
   -c, --config-file PATH    Config file to commit (default: apisec-config.yaml)
+  -t, --token TEXT          GitHub token (or set GITHUB_TOKEN env var)
+  --config-path TEXT        Path in repo for config (default: .apisec/config.yaml)
   --draft                   Create as draft PR
   --help                    Show this message and exit
+```
+
+### `apisec scan`
+
+Quick scan of repository for API artifacts (without starting the agent).
+
+```bash
+apisec scan [OPTIONS]
+
+Options:
+  -r, --repo-path PATH      Path to repository (default: current directory)
+  --json                    Output as JSON
+  --help                    Show this message and exit
+```
+
+Example:
+```bash
+$ apisec scan --repo-path ./sample-orders-api
+
+Scanning: /path/to/sample-orders-api
+
+  openapi:
+    - docs/openapi.yaml
+  postman:
+    - postman/orders-api.postman_collection.json
+  env:
+    - config/staging.env
+    - config/dev.env
+  logs:
+    - logs/staging-access.log
+
+Discovered artifacts:
+  OpenAPI specs (1)
+  Postman collections (1)
+  Environment files (2)
+  Log files (1)
 ```
 
 ## What the Agent Analyzes
