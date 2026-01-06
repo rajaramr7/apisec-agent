@@ -5,10 +5,9 @@ import sys
 from pathlib import Path
 
 import click
-import yaml
 
 from . import __version__
-from .agent.chat import create_agent
+from .agent import APIsecAgent, get_last_config
 from .pr.github import GitHubPRManager
 
 
@@ -39,13 +38,6 @@ def main():
     help="Path to the repository to analyze (default: current directory)",
 )
 @click.option(
-    "--config-output",
-    "-o",
-    type=click.Path(),
-    default="apisec-config.yaml",
-    help="Output path for generated config (default: apisec-config.yaml)",
-)
-@click.option(
     "--model",
     "-m",
     type=str,
@@ -58,13 +50,7 @@ def main():
     envvar="OPENAI_API_KEY",
     help="OpenAI API key (or set OPENAI_API_KEY env var)",
 )
-@click.option(
-    "--verbose",
-    "-v",
-    is_flag=True,
-    help="Enable verbose output (show tool calls)",
-)
-def agent(repo_path: str, config_output: str, model: str, api_key: str, verbose: bool):
+def agent(repo_path: str, model: str, api_key: str):
     """Start the interactive APIsec configuration agent.
 
     The agent will:
@@ -77,8 +63,8 @@ def agent(repo_path: str, config_output: str, model: str, api_key: str, verbose:
 
     \b
     Example:
-        apisec agent --repo-path ./my-api --config-output config.yaml
-        apisec agent -r ./my-api -o config.yaml -v
+        apisec agent --repo-path ./my-api
+        apisec agent -r ./my-api -m gpt-4
     """
     # Check for API key
     if not api_key and not os.environ.get("OPENAI_API_KEY"):
@@ -88,36 +74,26 @@ def agent(repo_path: str, config_output: str, model: str, api_key: str, verbose:
         )
         sys.exit(1)
 
+    api_key = api_key or os.environ.get("OPENAI_API_KEY")
+
     click.echo(f"APIsec Agent v{__version__}")
     click.echo(f"Repository: {Path(repo_path).resolve()}")
     click.echo(f"Model: {model}")
-    click.echo()
 
     try:
         # Create and run the agent
-        chat_agent = create_agent(
-            repo_path=repo_path,
-            model=model,
-            api_key=api_key,
-            verbose=verbose,
+        apisec_agent = APIsecAgent(
+            openai_api_key=api_key,
+            working_dir=repo_path,
         )
-
-        config = chat_agent.start(repo_path)
-
-        if config:
-            chat_agent.save_config(config_output)
-            click.echo(f"\n{chat_agent.get_conversation_summary()}")
-        else:
-            click.echo("\nNo configuration generated.")
+        apisec_agent.set_model(model)
+        apisec_agent.run_conversation()
 
     except KeyboardInterrupt:
         click.echo("\n\nInterrupted.")
         sys.exit(130)
     except Exception as e:
         click.echo(click.style(f"Error: {e}", fg="red"))
-        if verbose:
-            import traceback
-            traceback.print_exc()
         sys.exit(1)
 
 

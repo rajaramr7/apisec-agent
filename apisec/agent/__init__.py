@@ -1,7 +1,21 @@
 """Agent module - Core conversational agent logic."""
 
-from .chat import ChatAgent, create_agent
-from .llm import LLMClient
-from .tools import AgentTools
+from .llm import APIsecAgent
+from .tools import (
+    TOOLS,
+    TOOL_HANDLERS,
+    set_working_dir,
+    get_working_dir,
+    execute_tool,
+    get_last_config,
+)
 
-__all__ = ["ChatAgent", "LLMClient", "AgentTools", "create_agent"]
+__all__ = [
+    "APIsecAgent",
+    "TOOLS",
+    "TOOL_HANDLERS",
+    "set_working_dir",
+    "get_working_dir",
+    "execute_tool",
+    "get_last_config",
+]
