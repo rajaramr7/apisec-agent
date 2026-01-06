@@ -1,0 +1,76 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "apisec"
+version = "0.1.0"
+description = "AI-powered API security testing configuration agent"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.9"
+authors = [
+    {name = "APIsec Team", email = "support@apisec.ai"}
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Security",
+    "Topic :: Software Development :: Testing",
+]
+keywords = ["api", "security", "testing", "openapi", "cli"]
+dependencies = [
+    "click>=8.0.0",
+    "openai>=1.0.0",
+    "rich>=13.0.0",
+    "pyyaml>=6.0.0",
+    "pygithub>=2.0.0",
+    "pydantic>=2.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "black>=23.0.0",
+    "ruff>=0.1.0",
+    "mypy>=1.0.0",
+]
+
+[project.scripts]
+apisec = "apisec.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/rajaramr7/apisec-agent"
+Repository = "https://github.com/rajaramr7/apisec-agent"
+Issues = "https://github.com/rajaramr7/apisec-agent/issues"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["apisec*"]
+
+[tool.black]
+line-length = 100
+target-version = ["py39", "py310", "py311", "py312"]
+
+[tool.ruff]
+line-length = 100
+select = ["E", "F", "I", "N", "W"]
+ignore = ["E501"]
+
+[tool.mypy]
+python_version = "3.9"
+warn_return_any = true
+warn_unused_configs = true
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "-v --cov=apisec --cov-report=term-missing"
