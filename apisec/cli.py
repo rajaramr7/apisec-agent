@@ -7,7 +7,7 @@ from pathlib import Path
 import click
 
 from . import __version__
-from .agent import APIsecAgent, get_last_config
+from .agent import run_interactive_chat, run_interactive_chat_verbose
 from .pr.github import GitHubPRManager
 
 
@@ -38,19 +38,18 @@ def main():
     help="Path to the repository to analyze (default: current directory)",
 )
 @click.option(
-    "--model",
-    "-m",
-    type=str,
-    default="gpt-4-turbo",
-    help="LLM model to use (default: gpt-4-turbo)",
-)
-@click.option(
     "--api-key",
     type=str,
     envvar="OPENAI_API_KEY",
     help="OpenAI API key (or set OPENAI_API_KEY env var)",
 )
-def agent(repo_path: str, model: str, api_key: str):
+@click.option(
+    "--verbose",
+    "-v",
+    is_flag=True,
+    help="Enable verbose output (show tool executions)",
+)
+def agent(repo_path: str, api_key: str, verbose: bool):
     """Start the interactive APIsec configuration agent.
 
     The agent will:
@@ -64,7 +63,7 @@ def agent(repo_path: str, model: str, api_key: str):
     \b
     Example:
         apisec agent --repo-path ./my-api
-        apisec agent -r ./my-api -m gpt-4
+        apisec agent -r ./my-api -v
     """
     # Check for API key
     if not api_key and not os.environ.get("OPENAI_API_KEY"):
@@ -76,18 +75,11 @@ def agent(repo_path: str, model: str, api_key: str):
 
     api_key = api_key or os.environ.get("OPENAI_API_KEY")
 
-    click.echo(f"APIsec Agent v{__version__}")
-    click.echo(f"Repository: {Path(repo_path).resolve()}")
-    click.echo(f"Model: {model}")
-
     try:
-        # Create and run the agent
-        apisec_agent = APIsecAgent(
-            openai_api_key=api_key,
-            working_dir=repo_path,
-        )
-        apisec_agent.set_model(model)
-        apisec_agent.run_conversation()
+        if verbose:
+            run_interactive_chat_verbose(working_dir=repo_path, api_key=api_key)
+        else:
+            run_interactive_chat(working_dir=repo_path, api_key=api_key)
 
     except KeyboardInterrupt:
         click.echo("\n\nInterrupted.")
