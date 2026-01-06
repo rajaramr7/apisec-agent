@@ -28,7 +28,7 @@ class APIsecAgent:
         self.api_key = openai_api_key
         self.working_dir = Path(working_dir).resolve()
         self.client = OpenAI(api_key=openai_api_key)
-        self.model = "gpt-4"
+        self.model = "gpt-4-turbo"  # Use turbo for 128k context window
 
         # Set working directory for tools
         set_working_dir(str(self.working_dir))

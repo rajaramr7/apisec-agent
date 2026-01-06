@@ -41,8 +41,8 @@ def main():
     "--model",
     "-m",
     type=str,
-    default="gpt-4",
-    help="LLM model to use (default: gpt-4)",
+    default="gpt-4-turbo",
+    help="LLM model to use (default: gpt-4-turbo)",
 )
 @click.option(
     "--api-key",
