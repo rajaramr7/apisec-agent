@@ -9,6 +9,8 @@ from typing import Any, Dict, List, Optional
 from openai import OpenAI
 
 from .tools import TOOLS, TOOL_HANDLERS, set_working_dir, execute_tool
+from .validator import validate_response, strip_consultant_speak
+from ..tools import get_registry, ToolStatus
 
 
 class APIsecAgent:
@@ -28,7 +30,7 @@ class APIsecAgent:
         self.api_key = openai_api_key
         self.working_dir = Path(working_dir).resolve()
         self.client = OpenAI(api_key=openai_api_key)
-        self.model = "gpt-4-turbo"  # Use turbo for 128k context window
+        self.model = "gpt-4o"  # Fast model with 128k context, good tool use
 
         # Set working directory for tools
         set_working_dir(str(self.working_dir))
@@ -38,6 +40,139 @@ class APIsecAgent:
 
         # Initialize conversation history
         self.conversation_history: List[Dict[str, Any]] = []
+
+        # Get tool registry for capability checking
+        self._registry = get_registry()
+
+        # Track tools called during current turn (for validator)
+        self._tools_called_this_turn: List[str] = []
+
+    def check_capability(self, user_message: str) -> Dict[str, Any]:
+        """Check if the request can be fulfilled with available tools.
+
+        Runs BEFORE the LLM to detect impossible requests early.
+
+        Args:
+            user_message: User's request text
+
+        Returns:
+            Dict with:
+                - can_fulfill: bool
+                - available_tools: list of available tools for request
+                - missing_tools: list of tools needed but not available
+                - suggestion: optional alternative suggestion
+        """
+        result = self._registry.check_capability(user_message)
+
+        # Add suggestions for missing capabilities
+        if not result["can_fulfill"] and result["missing_tools"]:
+            missing_names = [t["name"] for t in result["missing_tools"]]
+            suggestions = []
+
+            # Suggest alternatives based on missing tools
+            if "fetch_postman_workspace" in missing_names:
+                suggestions.append(
+                    "Postman API integration requires authentication. "
+                    "You can export your Postman collection as JSON and use parse_postman instead."
+                )
+            if any(t in missing_names for t in ["clone_gitlab_repo", "clone_bitbucket_repo"]):
+                suggestions.append(
+                    "Repository cloning is available. Make sure to provide required authentication."
+                )
+            if any(t in missing_names for t in ["fetch_vault_credentials", "fetch_aws_secret"]):
+                suggestions.append(
+                    "Secret manager integration requires credentials. "
+                    "You can also provide credentials directly via environment variables."
+                )
+
+            result["suggestion"] = " ".join(suggestions) if suggestions else None
+
+        return result
+
+    def validate_tool_calls(self, tool_calls: list) -> Dict[str, Any]:
+        """Validate tool calls to catch hallucinated or unavailable tools.
+
+        Args:
+            tool_calls: List of tool call objects from OpenAI
+
+        Returns:
+            Dict with:
+                - valid: bool (all calls are valid)
+                - invalid_tools: list of tool names that don't exist
+                - unavailable_tools: list of tools that exist but aren't available
+                - valid_calls: list of validated tool calls to process
+        """
+        invalid_tools = []
+        unavailable_tools = []
+        valid_calls = []
+
+        for tool_call in tool_calls:
+            tool_name = tool_call.function.name
+
+            # Check if tool exists
+            tool_def = self._registry.get(tool_name)
+            if not tool_def:
+                invalid_tools.append(tool_name)
+                continue
+
+            # Check if tool is available
+            if not tool_def.is_available():
+                unavailable_tools.append({
+                    "name": tool_name,
+                    "status": tool_def.status.value,
+                })
+                continue
+
+            valid_calls.append(tool_call)
+
+        return {
+            "valid": len(invalid_tools) == 0 and len(unavailable_tools) == 0,
+            "invalid_tools": invalid_tools,
+            "unavailable_tools": unavailable_tools,
+            "valid_calls": valid_calls,
+        }
+
+    def build_error_response(
+        self,
+        invalid_tools: List[str],
+        unavailable_tools: List[Dict[str, Any]],
+    ) -> str:
+        """Build a helpful error response for invalid tool calls.
+
+        Args:
+            invalid_tools: List of non-existent tool names
+            unavailable_tools: List of dicts with name and status
+
+        Returns:
+            Error message to inject into conversation
+        """
+        parts = []
+
+        if invalid_tools:
+            parts.append(
+                f"The following tools do not exist: {', '.join(invalid_tools)}. "
+                "Please use only available tools."
+            )
+
+        if unavailable_tools:
+            for tool in unavailable_tools:
+                status = tool["status"]
+                name = tool["name"]
+                if status == "planned":
+                    parts.append(f"Tool '{name}' is planned but not yet implemented.")
+                elif status == "deprecated":
+                    parts.append(f"Tool '{name}' is deprecated and should not be used.")
+                elif status == "disabled":
+                    parts.append(f"Tool '{name}' is temporarily disabled.")
+                else:
+                    parts.append(f"Tool '{name}' is not available (status: {status}).")
+
+        # Add available alternatives
+        available = self._registry.list_available()
+        if available:
+            parts.append(f"\nAvailable tools: {', '.join(sorted(available)[:10])}...")
+
+        return " ".join(parts)
 
     def load_system_prompt(self) -> str:
         """Load system prompt from prompts/system_prompt.md.
@@ -67,42 +202,91 @@ class APIsecAgent:
         return self._default_system_prompt()
 
     def _default_system_prompt(self) -> str:
-        """Return default system prompt if file not found."""
-        return """# APIsec Agent — System Prompt
+        """Return default system prompt with tools built from registry."""
+        # Build tools section from registry
+        tools_section = self._registry.build_capability_summary()
 
-You are an APIsec configuration assistant. Your job is to help developers set up API security testing with minimal friction. You work through conversation, not forms.
+        # Honesty rules to prevent consultant-speak
+        honesty_rules = """
+## CRITICAL: No Describing — Only Doing
 
-## Your Core Philosophy
+You have tools. USE THEM. Don't describe what you would do.
 
-1. **Infer first, ask second.** If you can figure something out from artifacts, don't ask. Only ask when you genuinely need human input.
+WRONG:
+User: "Validate my token"
+You: "I will validate your token by checking the JWT structure, verifying the expiration, and extracting the user info. This ensures the token is valid..."
 
-2. **Explain why you're asking.** Developers are more likely to engage when they understand the purpose. Never ask for data without context.
+RIGHT:
+User: "Validate my token"
+You: *calls validate_token tool*
+You: "✓ Token valid. User: alice. Expires in 5 days."
 
-3. **Be conversational, not transactional.** You're having a dialogue, not administering a questionnaire.
+BANNED PHRASES (never use these):
+- "I will validate/parse/check by..."
+- "The process involves..."
+- "This ensures that..."
+- "Here's how I would..."
+- "First, I will... Next, I will..."
+- "Step 1... Step 2..."
+- Any numbered process explanation
 
-4. **Confirm understanding.** Before moving on, make sure you've got it right.
+REQUIRED BEHAVIOR:
+1. User asks for something → Call a tool → Show result
+2. Can't do it → Say "I can't do that yet. [X] isn't available."
+3. Need more info → Ask one specific question
 
-5. **Progressive depth.** Start with the basics (what API, where does it run), then auth, then BOLA, then RBAC.
+RESPONSE FORMAT:
+- Use ✓ for success
+- Use ✗ for failure
+- Show actual data, not process
+- Keep it short unless showing results
+"""
 
-## Available Tools
+        return f"""# APIsec Agent — System Prompt
 
-You have access to these tools:
-- scan_repo: Discover API artifacts in the repository
-- parse_openapi: Parse OpenAPI/Swagger specs
-- parse_postman: Parse Postman collections
-- parse_logs: Analyze API access logs
-- parse_env: Parse environment configuration files
-- generate_config: Generate the APIsec configuration file
-- create_pr: Create a GitHub pull request with the config
+You are an AI agent with ACCESS TO TOOLS. You CAN and MUST use tools to interact with the filesystem.
 
-Start by scanning the repository to see what artifacts are available, then analyze them to understand the API structure and authentication.
+**CRITICAL: You have tools. Use them. Do not say "I can't access the filesystem" - YOU CAN via tools.**
+
+{honesty_rules}
+
+## Your Approach: Ground, Scan, Then Ask About Gaps
+
+### Step 1: One Grounding Question
+
+Start with exactly ONE question: "Where's your API project?"
+- This folder [show current path]
+- A different local path
+- GitHub repo
+- Somewhere else
+
+This grounds everything. Don't ask more questions yet.
+
+### Step 2: Scan and Report
+
+**IMPORTANT: When the user provides a path, IMMEDIATELY call the `scan_repo` tool with that path. Do not just say you will scan - actually call the tool NOW.**
+
+Based on the answer:
+- **Local folder:** Call `scan_repo(path="<the path>")` IMMEDIATELY. Do not describe - just do it.
+- **GitHub:** Ask for repo and PAT, then use `validate_github_token` and `clone_github_repo`.
+- **Somewhere else:** Ask clarifying question about where.
+
+### Step 3: Show Value Immediately
+
+After scanning, show what you found with checkmarks (✓) and crosses (✗).
+
+### Step 4: Ask About Gaps (In Context)
+
+Only now ask questions — and only about what's missing.
+
+{tools_section}
 
 ## Response Style
 
 - Use markdown formatting for clarity
 - Use checkmarks (✓) and crosses (✗) for status
-- Use code blocks for configs, commands, URLs
-- Keep responses focused — don't dump everything at once
+- Keep responses focused and direct
+- Show results, not process
 - Be warm and helpful, not robotic
 """
 
@@ -112,25 +296,50 @@ Start by scanning the repository to see what artifacts are available, then analy
         Handles tool calls automatically, continuing until a final
         text response is ready.
 
+        Includes:
+        - Pre-LLM capability checking
+        - Post-LLM response validation
+        - Hallucination detection for tool calls
+        - Bullshit detection (catches consultant-speak)
+
         Args:
             user_message: The user's input message
 
         Returns:
             The assistant's final text response
         """
+        # Reset tools tracking for this turn
+        self._tools_called_this_turn = []
+
+        # Step 1: Pre-LLM capability check (optional - for impossible requests)
+        capability = self.check_capability(user_message)
+        if not capability["can_fulfill"] and capability["missing_tools"]:
+            # We have missing tools - inject context into system prompt
+            missing_info = []
+            for tool in capability["missing_tools"]:
+                missing_info.append(f"- {tool['name']} (status: {tool['status']})")
+            capability_warning = (
+                f"\n\n[SYSTEM: The user's request may reference unavailable tools:\n"
+                f"{chr(10).join(missing_info)}\n"
+                f"Please acknowledge this limitation and suggest alternatives.]\n"
+            )
+        else:
+            capability_warning = ""
+
         # Add user message to history
         self.conversation_history.append({
             "role": "user",
             "content": user_message,
         })
 
-        # Build messages for API call
-        messages = [{"role": "system", "content": self.system_prompt}]
+        # Build messages for API call (with capability warning if needed)
+        system_content = self.system_prompt + capability_warning
+        messages = [{"role": "system", "content": system_content}]
         messages.extend(self.conversation_history)
 
         # Loop until we get a text response (handle multiple tool calls)
         max_iterations = 10
-        for _ in range(max_iterations):
+        for iteration in range(max_iterations):
             # Call OpenAI API
             response = self.client.chat.completions.create(
                 model=self.model,
@@ -143,7 +352,72 @@ Start by scanning the repository to see what artifacts are available, then analy
 
             # Check if there are tool calls
             if assistant_message.tool_calls:
-                # Add assistant message with tool calls to history
+                # Step 2: Validate tool calls (catch hallucinations)
+                validation = self.validate_tool_calls(assistant_message.tool_calls)
+
+                if not validation["valid"]:
+                    # LLM tried to use invalid/unavailable tools
+                    error_msg = self.build_error_response(
+                        validation["invalid_tools"],
+                        validation["unavailable_tools"],
+                    )
+
+                    # Add assistant's attempt to history
+                    self.conversation_history.append({
+                        "role": "assistant",
+                        "content": assistant_message.content,
+                        "tool_calls": [
+                            {
+                                "id": tc.id,
+                                "type": "function",
+                                "function": {
+                                    "name": tc.function.name,
+                                    "arguments": tc.function.arguments,
+                                },
+                            }
+                            for tc in assistant_message.tool_calls
+                        ],
+                    })
+
+                    # Add error responses for invalid tools
+                    for tool_call in assistant_message.tool_calls:
+                        tool_name = tool_call.function.name
+                        if tool_name in validation["invalid_tools"]:
+                            error_content = json.dumps({
+                                "success": False,
+                                "error": f"Tool '{tool_name}' does not exist. {error_msg}",
+                            })
+                        elif any(t["name"] == tool_name for t in validation["unavailable_tools"]):
+                            status = next(
+                                t["status"] for t in validation["unavailable_tools"]
+                                if t["name"] == tool_name
+                            )
+                            error_content = json.dumps({
+                                "success": False,
+                                "error": f"Tool '{tool_name}' is not available (status: {status}).",
+                            })
+                        else:
+                            # Valid tool - will be processed
+                            continue
+
+                        self.conversation_history.append({
+                            "role": "tool",
+                            "tool_call_id": tool_call.id,
+                            "content": error_content,
+                        })
+
+                    # Process only valid tool calls
+                    if validation["valid_calls"]:
+                        tool_results = self.process_tool_calls(validation["valid_calls"])
+                        for result in tool_results:
+                            self.conversation_history.append(result)
+
+                    # Rebuild messages for retry
+                    messages = [{"role": "system", "content": system_content}]
+                    messages.extend(self.conversation_history)
+                    continue
+
+                # All tool calls are valid - process normally
                 self.conversation_history.append({
                     "role": "assistant",
                     "content": assistant_message.content,
@@ -168,13 +442,27 @@ Start by scanning the repository to see what artifacts are available, then analy
                     self.conversation_history.append(result)
 
                 # Rebuild messages for next iteration
-                messages = [{"role": "system", "content": self.system_prompt}]
+                messages = [{"role": "system", "content": system_content}]
                 messages.extend(self.conversation_history)
 
                 continue
 
             # No tool calls - we have a final response
             final_content = assistant_message.content or ""
+
+            # Step 3: Validate response for consultant-speak / bullshit
+            is_valid, validated_content = validate_response(
+                final_content,
+                self._tools_called_this_turn,
+            )
+
+            # If response was consultant-speak, strip any remaining fluff
+            if not is_valid:
+                final_content = validated_content
+            else:
+                # Light cleanup even on valid responses
+                final_content = strip_consultant_speak(final_content) or final_content
+
             self.conversation_history.append({
                 "role": "assistant",
                 "content": final_content,
@@ -198,6 +486,10 @@ Start by scanning the repository to see what artifacts are available, then analy
 
         for tool_call in tool_calls:
             tool_name = tool_call.function.name
+
+            # Track tool call for validator
+            self._tools_called_this_turn.append(tool_name)
+
             try:
                 arguments = json.loads(tool_call.function.arguments)
             except json.JSONDecodeError:

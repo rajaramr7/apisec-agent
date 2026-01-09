@@ -247,14 +247,27 @@ def _find_env_vars_used(collection: Dict) -> Set[str]:
     return set(matches)
 
 
-def parse_postman_environment(path: str) -> Dict[str, str]:
-    """Parse a Postman environment file.
+def parse_postman_environment(path: str) -> Dict[str, Any]:
+    """Parse a Postman environment file and extract configuration.
+
+    Analyzes the environment file to identify auth-related variables,
+    URL-related variables, user identity variables, and credential status.
 
     Args:
-        path: Path to the environment file
+        path: Path to the Postman environment file
 
     Returns:
-        Dictionary of variable name to value
+        Dictionary with structured environment information:
+        {
+            "name": "staging",
+            "variables": {"base_url": "https://...", ...},
+            "auth_related": {"client_id": "...", "client_secret": "...", ...},
+            "url_related": {"base_url": "https://...", "auth_url": "...", ...},
+            "user_identities": {"user_a": {"username": "...", "token": "..."}, ...},
+            "has_credentials": True,
+            "has_user_tokens": True,
+            "empty_secrets": ["user_a_token", ...]
+        }
     """
     file_path = Path(path)
 
@@ -264,15 +277,106 @@ def parse_postman_environment(path: str) -> Dict[str, str]:
     content = file_path.read_text(encoding="utf-8")
     env = json.loads(content)
 
+    # Extract environment name
+    env_name = env.get("name", Path(path).stem.replace(".postman_environment", ""))
+
+    # Extract all variables
     variables = {}
+    secrets = {}
+    empty_secrets = []
+
     for var in env.get("values", []):
         if var.get("enabled", True):
             key = var.get("key", "")
             value = var.get("value", "")
+            var_type = var.get("type", "default")
+
             if key:
                 variables[key] = value
 
-    return variables
+                # Track secrets
+                if var_type == "secret":
+                    secrets[key] = value
+                    if not value or value.strip() == "":
+                        empty_secrets.append(key)
+
+    # Identify auth-related variables
+    auth_patterns = ["token", "key", "secret", "auth", "password", "credential", "api_key", "apikey"]
+    auth_related = {}
+    for key, value in variables.items():
+        key_lower = key.lower()
+        if any(pattern in key_lower for pattern in auth_patterns):
+            auth_related[key] = value
+
+    # Identify URL-related variables
+    url_patterns = ["url", "host", "endpoint", "base", "uri", "server"]
+    url_related = {}
+    for key, value in variables.items():
+        key_lower = key.lower()
+        if any(pattern in key_lower for pattern in url_patterns):
+            url_related[key] = value
+
+    # Identify user identity variables
+    user_identities = _extract_user_identities(variables)
+
+    # Check for credentials and tokens
+    has_credentials = bool(auth_related.get("client_id") or auth_related.get("client_secret"))
+    has_user_tokens = any(
+        key.endswith("_token") and value
+        for key, value in auth_related.items()
+        if "user" in key.lower() or "admin" in key.lower()
+    )
+
+    return {
+        "name": env_name,
+        "variables": variables,
+        "auth_related": auth_related,
+        "url_related": url_related,
+        "user_identities": user_identities,
+        "has_credentials": has_credentials,
+        "has_user_tokens": has_user_tokens,
+        "empty_secrets": empty_secrets,
+    }
+
+
+def _extract_user_identities(variables: Dict[str, str]) -> Dict[str, Dict[str, str]]:
+    """Extract user identity information from variables.
+
+    Looks for patterns like user_a_username, user_a_password, user_a_token.
+
+    Args:
+        variables: Dictionary of all environment variables
+
+    Returns:
+        Dictionary mapping user identifiers to their credentials:
+        {
+            "user_a": {"username": "user_a", "password": "...", "token": "..."},
+            "admin": {"username": "admin", "password": "...", "token": "..."}
+        }
+    """
+    identities = {}
+
+    # Common user identifier patterns
+    user_patterns = [
+        r"^(user_[a-z0-9]+)_(\w+)$",  # user_a_username, user_b_token
+        r"^(admin)_(\w+)$",            # admin_password, admin_token
+        r"^(service)_(\w+)$",          # service_account, service_token
+    ]
+
+    for key, value in variables.items():
+        for pattern in user_patterns:
+            match = re.match(pattern, key.lower())
+            if match:
+                user_id = match.group(1)
+                field = match.group(2)
+
+                if user_id not in identities:
+                    identities[user_id] = {}
+
+                identities[user_id][field] = value
+                break
+
+    return identities
 
 
 class PostmanParser:
@@ -357,3 +461,212 @@ class PostmanParser:
 
         script_lower = script.lower()
         return any(pattern in script_lower for pattern in token_patterns)
+
+
+def format_collection_summary(parsed: Dict[str, Any]) -> str:
+    """
+    Format collection parsing results for display.
+
+    Args:
+        parsed: Result from parse_postman()
+
+    Returns:
+        Formatted string for display
+    """
+    lines = []
+
+    # Collection info
+    info = parsed.get("info", {})
+    name = info.get("name", "Unknown Collection")
+    lines.append(f"Collection: {name}")
+
+    # Count requests by method
+    requests = parsed.get("requests", [])
+    lines.append(f"\nFound {len(requests)} requests:")
+
+    by_method: Dict[str, List[Dict]] = {}
+    for req in requests:
+        method = req.get("method", "GET")
+        if method not in by_method:
+            by_method[method] = []
+        by_method[method].append(req)
+
+    # Display by method
+    for method in ["GET", "POST", "PUT", "PATCH", "DELETE"]:
+        if method not in by_method:
+            continue
+        lines.append(f"\n  {method}:")
+        for req in by_method[method][:5]:
+            path = req.get("path", req.get("url", ""))
+            has_payload = " (has payload)" if req.get("body") else ""
+            lines.append(f"    {path}{has_payload}")
+        if len(by_method[method]) > 5:
+            lines.append(f"    ... and {len(by_method[method]) - 5} more")
+
+    # Auth info
+    auth = parsed.get("auth")
+    if auth:
+        auth_type = auth.get("type", "none")
+        lines.append(f"\nAuth: {auth_type}")
+        if auth.get("token_url"):
+            lines.append(f"  Token URL: {auth['token_url']}")
+
+    # Environment variables used
+    env_vars = parsed.get("environment_vars_used", set())
+    if env_vars:
+        lines.append(f"\nEnvironment variables used: {len(env_vars)}")
+        for var in sorted(env_vars)[:10]:
+            lines.append(f"  {{{{{var}}}}}")
+        if len(env_vars) > 10:
+            lines.append(f"  ... and {len(env_vars) - 10} more")
+
+    return "\n".join(lines)
+
+
+def format_environment_summary(env: Dict[str, Any]) -> str:
+    """
+    Format environment parsing results for display.
+
+    Args:
+        env: Result from parse_postman_environment()
+
+    Returns:
+        Formatted string for display
+    """
+    lines = []
+
+    name = env.get("name", "Unknown")
+    lines.append(f"Environment: {name}")
+
+    # URLs
+    urls = env.get("url_related", {})
+    if urls:
+        lines.append("\n  URLs:")
+        for key, value in urls.items():
+            lines.append(f"    {key}: {value}")
+
+    # Credentials (masked)
+    auth = env.get("auth_related", {})
+    creds = {k: v for k, v in auth.items()
+             if any(p in k.lower() for p in ["client_id", "client_secret", "api_key", "password"])}
+    if creds:
+        lines.append("\n  Credentials:")
+        for key, value in creds.items():
+            if value and len(str(value)) > 4:
+                display = str(value)[:4] + "..." + str(value)[-2:] if len(str(value)) > 8 else "[set]"
+            else:
+                display = "[empty]" if not value else "[set]"
+            lines.append(f"    {key}: {display}")
+
+    # Tokens
+    identities = env.get("user_identities", {})
+    if identities:
+        lines.append("\n  User Identities:")
+        for user_id, fields in identities.items():
+            token = fields.get("token", "")
+            token_status = f"[present, {len(token)} chars]" if token else "[empty]"
+            lines.append(f"    {user_id}: {token_status}")
+
+    # Empty secrets warning
+    empty = env.get("empty_secrets", [])
+    if empty:
+        lines.append(f"\n  Warning: {len(empty)} empty secrets:")
+        for secret in empty[:5]:
+            lines.append(f"    - {secret}")
+
+    # Credential status
+    has_creds = env.get("has_credentials", False)
+    has_tokens = env.get("has_user_tokens", False)
+    lines.append(f"\n  Has credentials: {'Yes' if has_creds else 'No'}")
+    lines.append(f"  Has user tokens: {'Yes' if has_tokens else 'No'}")
+
+    return "\n".join(lines)
+
+
+def parse_postman_files(
+    collection_path: Optional[str] = None,
+    environment_path: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    Parse Postman collection and/or environment files.
+
+    This is a convenience function that combines collection and environment parsing.
+
+    Args:
+        collection_path: Path to Postman collection file
+        environment_path: Path to Postman environment file
+
+    Returns:
+        {
+            "endpoints": ["GET /orders", ...],
+            "payloads": {"POST /orders": {...}, ...},
+            "auth": {"type": "oauth2", "token_url": "..."},
+            "urls": {"base_url": "https://...", ...},
+            "credentials": {"client_id": "...", ...},
+            "tokens": {"user_a_token": "...", ...},
+            "identities": {"user_a": {"username": "...", "token": "..."}, ...},
+            "collection_summary": "...",
+            "environment_summary": "..."
+        }
+    """
+    result = {
+        "endpoints": [],
+        "payloads": {},
+        "auth": None,
+        "urls": {},
+        "credentials": {},
+        "tokens": {},
+        "identities": {},
+        "collection_summary": None,
+        "environment_summary": None
+    }
+
+    # Parse collection
+    if collection_path:
+        try:
+            collection = parse_postman(collection_path)
+
+            # Extract endpoints
+            for req in collection.get("requests", []):
+                method = req.get("method", "GET")
+                path = req.get("path", req.get("url", ""))
+                endpoint = f"{method} {path}"
+                if endpoint not in result["endpoints"]:
+                    result["endpoints"].append(endpoint)
+
+                # Extract payloads
+                if req.get("body") and endpoint not in result["payloads"]:
+                    result["payloads"][endpoint] = req["body"]
+
+            # Extract auth
+            if collection.get("auth"):
+                result["auth"] = collection["auth"]
+
+            result["collection_summary"] = format_collection_summary(collection)
+
+        except Exception as e:
+            result["collection_error"] = str(e)
+
+    # Parse environment
+    if environment_path:
+        try:
+            env = parse_postman_environment(environment_path)
+
+            result["urls"] = env.get("url_related", {})
+            result["identities"] = env.get("user_identities", {})
+
+            # Separate credentials and tokens
+            auth_related = env.get("auth_related", {})
+            for key, value in auth_related.items():
+                key_lower = key.lower()
+                if any(p in key_lower for p in ["token", "bearer", "jwt"]):
+                    result["tokens"][key] = value
+                elif any(p in key_lower for p in ["client_id", "client_secret", "api_key", "password"]):
+                    result["credentials"][key] = value
+
+            result["environment_summary"] = format_environment_summary(env)
+
+        except Exception as e:
+            result["environment_error"] = str(e)
+
+    return result

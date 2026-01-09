@@ -15,6 +15,7 @@ from rich.text import Text
 from rich.theme import Theme
 
 from .llm import APIsecAgent
+from ..tools import get_registry
 
 # Custom theme for consistent styling
 APISEC_THEME = Theme({
@@ -32,7 +33,7 @@ console = Console(theme=APISEC_THEME)
 
 
 def print_welcome() -> None:
-    """Print a welcome banner with APIsec branding."""
+    """Print welcome banner with APIsec branding."""
     banner = """
     ╔═══════════════════════════════════════════════════════════╗
     ║                                                           ║
@@ -43,27 +44,9 @@ def print_welcome() -> None:
     ║    ██║  ██║██║     ██║███████║███████╗╚██████╗           ║
     ║    ╚═╝  ╚═╝╚═╝     ╚═╝╚══════╝╚══════╝ ╚═════╝           ║
     ║                                                           ║
-    ║           Configuration Agent                             ║
-    ║                                                           ║
     ╚═══════════════════════════════════════════════════════════╝
     """
     console.print(banner, style="blue bold")
-
-    console.print()
-    console.print(
-        Panel(
-            "[bold]Welcome to the APIsec Configuration Agent![/bold]\n\n"
-            "I'll help you set up API security testing by:\n"
-            "  [cyan]1.[/cyan] Scanning your repository for API artifacts\n"
-            "  [cyan]2.[/cyan] Analyzing OpenAPI specs, Postman collections, and logs\n"
-            "  [cyan]3.[/cyan] Inferring authentication and authorization patterns\n"
-            "  [cyan]4.[/cyan] Generating an APIsec configuration file\n\n"
-            "[dim]Type [bold]'exit'[/bold] or [bold]'quit'[/bold] to stop, "
-            "[bold]'help'[/bold] for commands[/dim]",
-            border_style="blue",
-            padding=(1, 2),
-        )
-    )
     console.print()
 
 
@@ -75,19 +58,17 @@ def print_agent_message(message: str) -> None:
     """
     console.print()
 
-    # Create a panel with the agent's response
-    # Use Markdown rendering for nice formatting
-    md = Markdown(message)
+    # Print header
+    console.print("[bold blue]━━━ APIsec Agent ━━━[/bold blue]")
+    console.print()
 
-    console.print(
-        Panel(
-            md,
-            title="[bold blue]APIsec Agent[/bold blue]",
-            title_align="left",
-            border_style="blue",
-            padding=(1, 2),
-        )
-    )
+    # Render markdown directly (not in a panel) for better line wrapping
+    md = Markdown(message)
+    console.print(md)
+
+    # Print footer
+    console.print()
+    console.print("[blue]━" * 40 + "[/blue]")
 
 
 def print_user_prompt() -> str:
@@ -290,12 +271,135 @@ def print_goodbye() -> None:
     )
 
 
-def run_interactive_chat(working_dir: str = ".", api_key: Optional[str] = None) -> None:
+def get_grounding_message(working_path: Path) -> str:
+    """Get the initial grounding message for the agent.
+
+    Dynamically builds capabilities from the tool registry.
+
+    Args:
+        working_path: The current working directory path
+
+    Returns:
+        The grounding prompt to send to the agent
+    """
+    # Get available tools from registry
+    registry = get_registry()
+    tool_info = registry.build_opening_message_tools()
+
+    # Build capabilities list based on actual working tools
+    capabilities = []
+
+    # Check for version control tools
+    if registry.is_available("clone_github_repo"):
+        capabilities.append("• GitHub repo or local folder")
+    if registry.is_available("clone_gitlab_repo"):
+        capabilities.append("• GitLab repositories")
+    if registry.is_available("clone_bitbucket_repo"):
+        capabilities.append("• Bitbucket repositories")
+
+    # Check for spec parsing
+    if registry.is_available("parse_openapi"):
+        capabilities.append("• OpenAPI/Swagger specs")
+
+    # Check for API client tools
+    api_clients = []
+    if registry.is_available("parse_postman") or registry.is_available("parse_postman_collection_v2"):
+        api_clients.append("Postman")
+    if registry.is_available("parse_insomnia"):
+        api_clients.append("Insomnia")
+    if registry.is_available("parse_bruno"):
+        api_clients.append("Bruno")
+    if api_clients:
+        capabilities.append(f"• API clients ({', '.join(api_clients)})")
+
+    # Check for test parsers
+    if registry.is_available("parse_integration_tests"):
+        capabilities.append("• Integration tests (I'll grab the working payloads)")
+    if registry.is_available("parse_jest_tests"):
+        capabilities.append("• Jest/Supertest tests")
+    if registry.is_available("parse_fixtures"):
+        capabilities.append("• Test fixtures (I'll find real IDs, not placeholders)")
+
+    # Check for environment tools
+    if registry.is_available("parse_env_file_v2") or registry.is_available("scan_env_files"):
+        capabilities.append("• Environment files (.env) with credentials")
+
+    # Check for HAR files
+    if registry.is_available("parse_har_file"):
+        capabilities.append("• HAR files (from browser DevTools/proxies)")
+
+    # Check for API gateways
+    gateways = []
+    if registry.is_available("fetch_kong_config"):
+        gateways.append("Kong")
+    if registry.is_available("fetch_aws_api_gateway"):
+        gateways.append("AWS API Gateway")
+    if gateways:
+        capabilities.append(f"• API gateways ({', '.join(gateways)})")
+
+    # Check for secret managers
+    secrets = []
+    if registry.is_available("fetch_vault_credentials"):
+        secrets.append("Vault")
+    if registry.is_available("fetch_aws_secret"):
+        secrets.append("AWS Secrets")
+    if secrets:
+        capabilities.append(f"• Secret managers ({', '.join(secrets)})")
+
+    capabilities_text = "\n".join(capabilities) if capabilities else "• Local folders and files"
+
+    # Build source options
+    sources = []
+    sources.append(f"• **Local:** `{working_path}` or any path")
+    if registry.is_available("clone_github_repo"):
+        sources.append("• **GitHub:** `acme-corp/orders-api`")
+    if registry.is_available("clone_gitlab_repo"):
+        sources.append("• **GitLab:** `group/project`")
+    if registry.is_available("clone_bitbucket_repo"):
+        sources.append("• **Bitbucket:** `workspace/repo`")
+    if registry.is_available("fetch_postman_workspace"):
+        sources.append("• **Postman workspace:** provide your Postman API key")
+    sources.append("• **Spec URL:** `https://api.example.com/openapi.json`")
+
+    sources_text = "\n".join(sources)
+
+    # Count available tools
+    available_count = len(registry.list_available())
+
+    return f"""The user has just started the APIsec agent.
+
+Display this exact opening message. Format bullet points on separate lines:
+
+---
+
+Hey! I'll generate an API security testing config by scanning your existing code and artifacts.
+
+**I can pull from what you already have ({available_count} tools available):**
+
+{capabilities_text}
+
+**By the end, you'll have a config with:**
+
+• Real endpoints & payloads that actually work
+• Valid test IDs and tokens (I'll check they're not expired)
+• BOLA tests auto-generated from ownership data
+
+**Let's go! Point me to your code:**
+
+{sources_text}
+
+---
+
+Wait for their response. When they provide a path, IMMEDIATELY call `scan_repo` with that path. Do not describe what you will do - just do it."""
+
+
+def run_interactive_chat(working_dir: str = ".", api_key: Optional[str] = None, model: Optional[str] = None) -> None:
     """Run the interactive chat loop.
 
     Args:
         working_dir: Path to the repository to analyze
         api_key: OpenAI API key (uses env var if not provided)
+        model: OpenAI model to use (default: gpt-4o)
     """
     # Get API key
     api_key = api_key or os.environ.get("OPENAI_API_KEY")
@@ -309,31 +413,24 @@ def run_interactive_chat(working_dir: str = ".", api_key: Optional[str] = None) 
     # Print welcome
     print_welcome()
 
-    # Show repository info
-    print_info(f"Repository: [bold]{working_path}[/bold]")
-    console.print()
-
     # Create agent
     try:
         agent = APIsecAgent(
             openai_api_key=api_key,
             working_dir=str(working_path),
         )
+        if model:
+            agent.set_model(model)
     except Exception as e:
         print_error(f"Failed to initialize agent: {e}")
         sys.exit(1)
 
-    # Send initial message to trigger repo scan
-    print_info("Starting repository analysis...")
-
+    # Send grounding message - ask ONE question first
     with print_thinking():
         try:
-            initial_response = agent.chat(
-                "I want to set up API security testing for my repository. "
-                "Please scan it and tell me what you find."
-            )
+            initial_response = agent.chat(get_grounding_message(working_path))
         except Exception as e:
-            print_error(f"Failed to analyze repository: {e}")
+            print_error(f"Failed to start agent: {e}")
             sys.exit(1)
 
     print_agent_message(initial_response)
@@ -416,12 +513,13 @@ class VerboseAPIsecAgent(APIsecAgent):
         return super().process_tool_calls(tool_calls)
 
 
-def run_interactive_chat_verbose(working_dir: str = ".", api_key: Optional[str] = None) -> None:
+def run_interactive_chat_verbose(working_dir: str = ".", api_key: Optional[str] = None, model: Optional[str] = None) -> None:
     """Run interactive chat with verbose tool execution output.
 
     Args:
         working_dir: Path to the repository to analyze
         api_key: OpenAI API key (uses env var if not provided)
+        model: OpenAI model to use (default: gpt-4o)
     """
     # Get API key
     api_key = api_key or os.environ.get("OPENAI_API_KEY")
@@ -434,10 +532,7 @@ def run_interactive_chat_verbose(working_dir: str = ".", api_key: Optional[str] 
 
     # Print welcome
     print_welcome()
-
-    # Show repository info
-    print_info(f"Repository: [bold]{working_path}[/bold]")
-    print_info("Verbose mode: Tool executions will be shown")
+    print_info("Verbose mode enabled")
     console.print()
 
     # Create verbose agent
@@ -446,22 +541,18 @@ def run_interactive_chat_verbose(working_dir: str = ".", api_key: Optional[str] 
             openai_api_key=api_key,
             working_dir=str(working_path),
         )
+        if model:
+            agent.set_model(model)
     except Exception as e:
         print_error(f"Failed to initialize agent: {e}")
         sys.exit(1)
 
-    # Send initial message
-    print_info("Starting repository analysis...")
-    console.print()
-
+    # Send grounding message - ask ONE question first
     with print_thinking():
         try:
-            initial_response = agent.chat(
-                "I want to set up API security testing for my repository. "
-                "Please scan it and tell me what you find."
-            )
+            initial_response = agent.chat(get_grounding_message(working_path))
         except Exception as e:
-            print_error(f"Failed to analyze repository: {e}")
+            print_error(f"Failed to start agent: {e}")
             sys.exit(1)
 
     print_agent_message(initial_response)
