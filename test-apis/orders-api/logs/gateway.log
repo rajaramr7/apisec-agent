@@ -1,0 +1,41 @@
+2024-01-26T10:30:00.045Z INFO  [gateway] [req_001] POST /v2/auth/token - client_ip=192.168.1.100 user_agent="Mozilla/5.0" response_time=45ms status=200 bytes_sent=245
+2024-01-26T10:30:01.032Z INFO  [gateway] [req_002] GET /v2/orders - client_ip=192.168.1.100 user_agent="Mozilla/5.0" auth_user=cust_alice_123 response_time=32ms status=200 bytes_sent=512
+2024-01-26T10:30:02.028Z INFO  [gateway] [req_003] GET /v2/orders/ord_alice_001 - client_ip=192.168.1.100 user_agent="Mozilla/5.0" auth_user=cust_alice_123 response_time=28ms status=200 bytes_sent=420
+2024-01-26T10:30:03.025Z WARN  [gateway] [req_004] GET /v2/orders/ord_bob_001 - client_ip=192.168.1.100 user_agent="Mozilla/5.0" auth_user=cust_alice_123 response_time=25ms status=200 bytes_sent=380 ALERT=BOLA_POTENTIAL resource_owner=cust_bob_456 requester=cust_alice_123
+2024-01-26T10:30:04.035Z INFO  [gateway] [req_005] POST /v2/orders - client_ip=192.168.1.100 user_agent="Mozilla/5.0" auth_user=cust_alice_123 response_time=35ms status=201 bytes_sent=280
+2024-01-26T10:30:05.022Z INFO  [gateway] [req_006] GET /v2/products - client_ip=192.168.1.100 user_agent="Mozilla/5.0" response_time=22ms status=200 bytes_sent=850
+2024-01-26T10:30:06.030Z INFO  [gateway] [req_007] PUT /v2/orders/ord_alice_003 - client_ip=192.168.1.100 user_agent="Mozilla/5.0" auth_user=cust_alice_123 response_time=30ms status=200 bytes_sent=320
+2024-01-26T10:30:07.028Z INFO  [gateway] [req_008] DELETE /v2/orders/ord_alice_003 - client_ip=192.168.1.100 user_agent="Mozilla/5.0" auth_user=cust_alice_123 response_time=28ms status=204 bytes_sent=0
+
+# Second session - Bob's requests
+2024-01-26T11:00:00.050Z INFO  [gateway] [req_101] POST /v2/auth/token - client_ip=192.168.1.150 user_agent="PostmanRuntime/7.32.3" response_time=48ms status=200 bytes_sent=245
+2024-01-26T11:00:01.035Z INFO  [gateway] [req_102] GET /v2/orders - client_ip=192.168.1.150 user_agent="PostmanRuntime/7.32.3" auth_user=cust_bob_456 response_time=30ms status=200 bytes_sent=320
+2024-01-26T11:00:02.025Z INFO  [gateway] [req_103] GET /v2/orders/ord_bob_001 - client_ip=192.168.1.150 user_agent="PostmanRuntime/7.32.3" auth_user=cust_bob_456 response_time=25ms status=200 bytes_sent=380
+2024-01-26T11:00:03.020Z WARN  [gateway] [req_104] GET /v2/orders/ord_alice_001 - client_ip=192.168.1.150 user_agent="PostmanRuntime/7.32.3" auth_user=cust_bob_456 response_time=22ms status=200 bytes_sent=420 ALERT=BOLA_POTENTIAL resource_owner=cust_alice_123 requester=cust_bob_456
+
+# Admin session
+2024-01-26T12:00:00.055Z INFO  [gateway] [req_201] POST /v2/auth/token - client_ip=10.0.0.5 user_agent="curl/8.1.2" response_time=52ms status=200 bytes_sent=248
+2024-01-26T12:00:01.040Z INFO  [gateway] [req_202] GET /v2/admin/orders - client_ip=10.0.0.5 user_agent="curl/8.1.2" auth_user=admin_user_001 auth_role=admin response_time=45ms status=200 bytes_sent=2048
+2024-01-26T12:00:02.038Z INFO  [gateway] [req_203] GET /v2/admin/customers/cust_alice_123 - client_ip=10.0.0.5 user_agent="curl/8.1.2" auth_user=admin_user_001 auth_role=admin response_time=28ms status=200 bytes_sent=450
+
+# Rate limiting events
+2024-01-26T13:00:00.010Z WARN  [gateway] [req_301] GET /v2/products - client_ip=192.168.1.200 user_agent="python-requests/2.28.0" response_time=5ms status=429 error="Rate limit exceeded" rate_limit=100/min current_count=105
+2024-01-26T13:00:00.015Z WARN  [gateway] [req_302] GET /v2/products - client_ip=192.168.1.200 user_agent="python-requests/2.28.0" response_time=4ms status=429 error="Rate limit exceeded" rate_limit=100/min current_count=106
+2024-01-26T13:00:00.020Z WARN  [gateway] [req_303] GET /v2/products - client_ip=192.168.1.200 user_agent="python-requests/2.28.0" response_time=4ms status=429 error="Rate limit exceeded" rate_limit=100/min current_count=107
+
+# Authentication failures
+2024-01-26T14:00:00.100Z ERROR [gateway] [req_401] POST /v2/auth/token - client_ip=192.168.1.50 user_agent="Mozilla/5.0" response_time=120ms status=401 error="Invalid credentials" email=alice@example.com
+2024-01-26T14:00:05.150Z ERROR [gateway] [req_402] POST /v2/auth/token - client_ip=192.168.1.50 user_agent="Mozilla/5.0" response_time=115ms status=401 error="Invalid credentials" email=alice@example.com
+2024-01-26T14:00:10.200Z ERROR [gateway] [req_403] POST /v2/auth/token - client_ip=192.168.1.50 user_agent="Mozilla/5.0" response_time=118ms status=401 error="Invalid credentials" email=alice@example.com
+2024-01-26T14:00:15.250Z WARN  [gateway] [req_404] POST /v2/auth/token - client_ip=192.168.1.50 user_agent="Mozilla/5.0" response_time=5ms status=429 error="Account locked" email=alice@example.com ALERT=BRUTE_FORCE_ATTEMPT
+
+# Invalid token attempts
+2024-01-26T15:00:00.100Z ERROR [gateway] [req_501] GET /v2/orders - client_ip=192.168.1.75 user_agent="curl/8.1.2" response_time=8ms status=401 error="Invalid or expired token"
+2024-01-26T15:00:01.105Z ERROR [gateway] [req_502] GET /v2/customers/me - client_ip=192.168.1.75 user_agent="curl/8.1.2" response_time=7ms status=401 error="Invalid or expired token"
+
+# SQL Injection attempt (blocked)
+2024-01-26T16:00:00.500Z ERROR [gateway] [req_601] GET /v2/products?category=electronics'%20OR%20'1'='1 - client_ip=192.168.1.99 user_agent="sqlmap/1.7" response_time=2ms status=400 error="Invalid input detected" ALERT=SQL_INJECTION_ATTEMPT
+
+# Successful webhook delivery
+2024-01-26T17:00:00.100Z INFO  [gateway] [webhook_001] POST https://merchant.example.com/webhooks/orders - event=order.created order_id=ord_alice_004 response_time=250ms status=200
+2024-01-26T17:00:00.350Z INFO  [gateway] [webhook_002] POST https://shipping.example.com/api/notify - event=order.created order_id=ord_alice_004 response_time=180ms status=200

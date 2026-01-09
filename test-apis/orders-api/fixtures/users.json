@@ -1,0 +1,56 @@
+{
+  "users": [
+    {
+      "id": "cust_alice_123",
+      "email": "alice@example.com",
+      "name": "Alice Johnson",
+      "role": "customer",
+      "password_hash": "$2b$10$abc123hashforalice",
+      "created_at": "2024-01-01T00:00:00Z",
+      "owns": {
+        "orders": ["ord_alice_001", "ord_alice_002", "ord_alice_003"],
+        "addresses": ["addr_alice_home", "addr_alice_work"],
+        "payment_methods": ["pm_alice_visa", "pm_alice_mastercard"]
+      }
+    },
+    {
+      "id": "cust_bob_456",
+      "email": "bob@example.com",
+      "name": "Bob Smith",
+      "role": "customer",
+      "password_hash": "$2b$10$def456hashforbob",
+      "created_at": "2024-01-02T00:00:00Z",
+      "owns": {
+        "orders": ["ord_bob_001", "ord_bob_002"],
+        "addresses": ["addr_bob_home"],
+        "payment_methods": ["pm_bob_amex"]
+      }
+    },
+    {
+      "id": "cust_charlie_789",
+      "email": "charlie@example.com",
+      "name": "Charlie Brown",
+      "role": "customer",
+      "password_hash": "$2b$10$ghi789hashforcharlie",
+      "created_at": "2024-01-03T00:00:00Z",
+      "owns": {
+        "orders": ["ord_charlie_001"],
+        "addresses": ["addr_charlie_home"],
+        "payment_methods": []
+      }
+    },
+    {
+      "id": "admin_user_001",
+      "email": "admin@example.com",
+      "name": "Admin User",
+      "role": "admin",
+      "password_hash": "$2b$10$admin_hash_here",
+      "created_at": "2023-12-01T00:00:00Z",
+      "owns": {
+        "orders": [],
+        "addresses": [],
+        "payment_methods": []
+      }
+    }
+  ]
+}

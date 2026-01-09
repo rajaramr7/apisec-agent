@@ -1,0 +1,52 @@
+{
+  "products": [
+    {
+      "id": "prod_laptop_001",
+      "name": "ProBook Laptop 15",
+      "description": "15-inch professional laptop with 16GB RAM and 512GB SSD",
+      "price": 1299.99,
+      "category": "electronics",
+      "stock": 50
+    },
+    {
+      "id": "prod_mouse_002",
+      "name": "Wireless Mouse Pro",
+      "description": "Ergonomic wireless mouse with precision tracking",
+      "price": 49.99,
+      "category": "accessories",
+      "stock": 200
+    },
+    {
+      "id": "prod_keyboard_003",
+      "name": "Mechanical Keyboard RGB",
+      "description": "Cherry MX switches with RGB backlighting",
+      "price": 149.99,
+      "category": "accessories",
+      "stock": 75
+    },
+    {
+      "id": "prod_monitor_004",
+      "name": "UltraWide Monitor 34",
+      "description": "34-inch curved ultrawide monitor, 3440x1440",
+      "price": 399.99,
+      "category": "electronics",
+      "stock": 30
+    },
+    {
+      "id": "prod_headphones_005",
+      "name": "Noise Cancelling Headphones",
+      "description": "Premium wireless headphones with ANC",
+      "price": 299.99,
+      "category": "audio",
+      "stock": 100
+    },
+    {
+      "id": "prod_webcam_006",
+      "name": "HD Webcam 1080p",
+      "description": "Full HD webcam with built-in microphone",
+      "price": 89.99,
+      "category": "accessories",
+      "stock": 150
+    }
+  ]
+}

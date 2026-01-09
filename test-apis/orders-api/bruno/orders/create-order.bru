@@ -1,0 +1,40 @@
+meta {
+  name: Create Order
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{base_url}}/orders
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{alice_token}}
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "items": [
+      {"product_id": "prod_laptop_001", "quantity": 1}
+    ],
+    "shipping_address": {
+      "street": "123 Main St",
+      "city": "San Francisco",
+      "state": "CA",
+      "zip": "94102",
+      "country": "US"
+    }
+  }
+}
+
+assert {
+  res.status: eq 201
+  res.body.id: isString
+  res.body.status: eq pending
+}

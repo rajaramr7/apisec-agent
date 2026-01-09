@@ -1,0 +1,34 @@
+meta {
+  name: BOLA Attack - Access Bob's Order
+  type: http
+  seq: 3
+}
+
+docs {
+  This request demonstrates a BOLA vulnerability where Alice attempts to access Bob's order.
+  If the API is vulnerable, it will return Bob's order details.
+  A secure API should return 403 Forbidden.
+}
+
+get {
+  url: {{base_url}}/orders/{{bob_order_id}}
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{alice_token}}
+}
+
+tests {
+  // This test checks if BOLA vulnerability exists
+  test("Should NOT allow access to another user's order", function() {
+    // If status is 200, the API is VULNERABLE to BOLA
+    if (res.status === 200) {
+      console.warn("SECURITY ISSUE: BOLA vulnerability detected!");
+      console.warn("Alice was able to access Bob's order");
+    }
+    // Secure behavior: should return 403 Forbidden
+    expect(res.status).to.equal(403);
+  });
+}

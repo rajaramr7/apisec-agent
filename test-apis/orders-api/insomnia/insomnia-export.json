@@ -1,0 +1,240 @@
+{
+  "_type": "export",
+  "__export_format": 4,
+  "__export_date": "2024-01-26T10:00:00.000Z",
+  "__export_source": "insomnia.desktop.app:v2023.5.8",
+  "resources": [
+    {
+      "_id": "wrk_orders_api",
+      "_type": "workspace",
+      "name": "Orders API",
+      "description": "E-commerce Orders API for BOLA vulnerability testing",
+      "scope": "collection"
+    },
+    {
+      "_id": "env_development",
+      "_type": "environment",
+      "name": "Development",
+      "parentId": "wrk_orders_api",
+      "data": {
+        "base_url": "http://localhost:3000/v2",
+        "alice_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJjdXN0X2FsaWNlXzEyMyIsImVtYWlsIjoiYWxpY2VAZXhhbXBsZS5jb20iLCJyb2xlIjoiY3VzdG9tZXIiLCJpYXQiOjE3MDYyNjMwMDB9.alice_signature",
+        "bob_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJjdXN0X2JvYl80NTYiLCJlbWFpbCI6ImJvYkBleGFtcGxlLmNvbSIsInJvbGUiOiJjdXN0b21lciIsImlhdCI6MTcwNjI2MzAwMH0.bob_signature",
+        "admin_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhZG1pbl91c2VyXzAwMSIsImVtYWlsIjoiYWRtaW5AZXhhbXBsZS5jb20iLCJyb2xlIjoiYWRtaW4iLCJpYXQiOjE3MDYyNjMwMDB9.admin_signature",
+        "alice_order_id": "ord_alice_001",
+        "bob_order_id": "ord_bob_001"
+      }
+    },
+    {
+      "_id": "fld_auth",
+      "_type": "request_group",
+      "name": "Authentication",
+      "parentId": "wrk_orders_api"
+    },
+    {
+      "_id": "req_login",
+      "_type": "request",
+      "name": "Login",
+      "parentId": "fld_auth",
+      "method": "POST",
+      "url": "{{ _.base_url }}/auth/token",
+      "headers": [
+        {"name": "Content-Type", "value": "application/json"}
+      ],
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"email\": \"alice@example.com\",\n  \"password\": \"alice_pass_123\"\n}"
+      }
+    },
+    {
+      "_id": "req_refresh",
+      "_type": "request",
+      "name": "Refresh Token",
+      "parentId": "fld_auth",
+      "method": "POST",
+      "url": "{{ _.base_url }}/auth/refresh",
+      "headers": [
+        {"name": "Content-Type", "value": "application/json"},
+        {"name": "Authorization", "value": "Bearer {{ _.alice_token }}"}
+      ],
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"refresh_token\": \"refresh_token_here\"\n}"
+      }
+    },
+    {
+      "_id": "fld_orders",
+      "_type": "request_group",
+      "name": "Orders",
+      "parentId": "wrk_orders_api"
+    },
+    {
+      "_id": "req_list_orders",
+      "_type": "request",
+      "name": "List My Orders",
+      "parentId": "fld_orders",
+      "method": "GET",
+      "url": "{{ _.base_url }}/orders",
+      "headers": [
+        {"name": "Authorization", "value": "Bearer {{ _.alice_token }}"}
+      ]
+    },
+    {
+      "_id": "req_get_own_order",
+      "_type": "request",
+      "name": "Get Own Order",
+      "parentId": "fld_orders",
+      "method": "GET",
+      "url": "{{ _.base_url }}/orders/{{ _.alice_order_id }}",
+      "headers": [
+        {"name": "Authorization", "value": "Bearer {{ _.alice_token }}"}
+      ]
+    },
+    {
+      "_id": "req_bola_attack",
+      "_type": "request",
+      "name": "BOLA Attack - Access Bob's Order",
+      "description": "This request demonstrates a BOLA vulnerability where Alice attempts to access Bob's order",
+      "parentId": "fld_orders",
+      "method": "GET",
+      "url": "{{ _.base_url }}/orders/{{ _.bob_order_id }}",
+      "headers": [
+        {"name": "Authorization", "value": "Bearer {{ _.alice_token }}"}
+      ]
+    },
+    {
+      "_id": "req_create_order",
+      "_type": "request",
+      "name": "Create Order",
+      "parentId": "fld_orders",
+      "method": "POST",
+      "url": "{{ _.base_url }}/orders",
+      "headers": [
+        {"name": "Authorization", "value": "Bearer {{ _.alice_token }}"},
+        {"name": "Content-Type", "value": "application/json"}
+      ],
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"items\": [\n    {\"product_id\": \"prod_laptop_001\", \"quantity\": 1}\n  ],\n  \"shipping_address\": {\n    \"street\": \"123 Main St\",\n    \"city\": \"San Francisco\",\n    \"state\": \"CA\",\n    \"zip\": \"94102\",\n    \"country\": \"US\"\n  }\n}"
+      }
+    },
+    {
+      "_id": "req_update_order",
+      "_type": "request",
+      "name": "Update Order",
+      "parentId": "fld_orders",
+      "method": "PUT",
+      "url": "{{ _.base_url }}/orders/{{ _.alice_order_id }}",
+      "headers": [
+        {"name": "Authorization", "value": "Bearer {{ _.alice_token }}"},
+        {"name": "Content-Type", "value": "application/json"}
+      ],
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"shipping_address\": {\n    \"street\": \"456 New Address\",\n    \"city\": \"San Francisco\",\n    \"state\": \"CA\",\n    \"zip\": \"94103\",\n    \"country\": \"US\"\n  }\n}"
+      }
+    },
+    {
+      "_id": "req_cancel_order",
+      "_type": "request",
+      "name": "Cancel Order",
+      "parentId": "fld_orders",
+      "method": "DELETE",
+      "url": "{{ _.base_url }}/orders/{{ _.alice_order_id }}",
+      "headers": [
+        {"name": "Authorization", "value": "Bearer {{ _.alice_token }}"}
+      ]
+    },
+    {
+      "_id": "fld_customers",
+      "_type": "request_group",
+      "name": "Customers",
+      "parentId": "wrk_orders_api"
+    },
+    {
+      "_id": "req_get_profile",
+      "_type": "request",
+      "name": "Get My Profile",
+      "parentId": "fld_customers",
+      "method": "GET",
+      "url": "{{ _.base_url }}/customers/me",
+      "headers": [
+        {"name": "Authorization", "value": "Bearer {{ _.alice_token }}"}
+      ]
+    },
+    {
+      "_id": "req_update_profile",
+      "_type": "request",
+      "name": "Update Profile",
+      "parentId": "fld_customers",
+      "method": "PUT",
+      "url": "{{ _.base_url }}/customers/me",
+      "headers": [
+        {"name": "Authorization", "value": "Bearer {{ _.alice_token }}"},
+        {"name": "Content-Type", "value": "application/json"}
+      ],
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"name\": \"Alice Johnson Updated\",\n  \"phone\": \"+1-555-0101\"\n}"
+      }
+    },
+    {
+      "_id": "fld_products",
+      "_type": "request_group",
+      "name": "Products",
+      "parentId": "wrk_orders_api"
+    },
+    {
+      "_id": "req_list_products",
+      "_type": "request",
+      "name": "List Products",
+      "parentId": "fld_products",
+      "method": "GET",
+      "url": "{{ _.base_url }}/products"
+    },
+    {
+      "_id": "req_get_product",
+      "_type": "request",
+      "name": "Get Product",
+      "parentId": "fld_products",
+      "method": "GET",
+      "url": "{{ _.base_url }}/products/prod_laptop_001"
+    },
+    {
+      "_id": "req_search_products",
+      "_type": "request",
+      "name": "Search Products",
+      "parentId": "fld_products",
+      "method": "GET",
+      "url": "{{ _.base_url }}/products?category=electronics&min_price=100&max_price=500"
+    },
+    {
+      "_id": "fld_admin",
+      "_type": "request_group",
+      "name": "Admin Operations",
+      "parentId": "wrk_orders_api"
+    },
+    {
+      "_id": "req_admin_list_all_orders",
+      "_type": "request",
+      "name": "List All Orders (Admin)",
+      "parentId": "fld_admin",
+      "method": "GET",
+      "url": "{{ _.base_url }}/admin/orders",
+      "headers": [
+        {"name": "Authorization", "value": "Bearer {{ _.admin_token }}"}
+      ]
+    },
+    {
+      "_id": "req_admin_get_any_customer",
+      "_type": "request",
+      "name": "Get Any Customer (Admin)",
+      "parentId": "fld_admin",
+      "method": "GET",
+      "url": "{{ _.base_url }}/admin/customers/cust_alice_123",
+      "headers": [
+        {"name": "Authorization", "value": "Bearer {{ _.admin_token }}"}
+      ]
+    }
+  ]
+}

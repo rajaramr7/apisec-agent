@@ -1,0 +1,21 @@
+meta {
+  name: Get Own Order
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{base_url}}/orders/{{alice_order_id}}
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{alice_token}}
+}
+
+assert {
+  res.status: eq 200
+  res.body.id: eq ord_alice_001
+  res.body.customer_id: eq cust_alice_123
+}
