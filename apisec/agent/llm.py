@@ -364,7 +364,12 @@ Only now ask questions — and only about what's missing.
 
         # Loop until we get a text response (handle multiple tool calls)
         max_iterations = 10
+        debug = os.environ.get("APISEC_DEBUG", "").lower() in ("1", "true", "yes")
+
         for iteration in range(max_iterations):
+            if debug:
+                print(f"[DEBUG] Iteration {iteration + 1}/{max_iterations}")
+
             # Call OpenAI API
             response = self.client.chat.completions.create(
                 model=self.model,
@@ -377,6 +382,9 @@ Only now ask questions — and only about what's missing.
 
             # Check if there are tool calls
             if assistant_message.tool_calls:
+                if debug:
+                    tool_names = [tc.function.name for tc in assistant_message.tool_calls]
+                    print(f"[DEBUG] Tool calls: {tool_names}")
                 # Step 2: Validate tool calls (catch hallucinations)
                 validation = self.validate_tool_calls(assistant_message.tool_calls)
 
@@ -475,11 +483,18 @@ Only now ask questions — and only about what's missing.
             # No tool calls - we have a final response
             final_content = assistant_message.content or ""
 
+            if debug:
+                print(f"[DEBUG] Final response (no tool calls), length={len(final_content)}")
+                print(f"[DEBUG] Tools called this turn: {self._tools_called_this_turn}")
+
             # Step 3: Validate response for consultant-speak / bullshit
             is_valid, validated_content = validate_response(
                 final_content,
                 self._tools_called_this_turn,
             )
+
+            if debug:
+                print(f"[DEBUG] Validation result: is_valid={is_valid}")
 
             # If response was consultant-speak, strip any remaining fluff
             if not is_valid:
@@ -496,6 +511,9 @@ Only now ask questions — and only about what's missing.
             return final_content
 
         # Max iterations reached
+        if debug:
+            print(f"[DEBUG] Max iterations ({max_iterations}) reached!")
+            print(f"[DEBUG] Tools called: {self._tools_called_this_turn}")
         return "I apologize, but I'm having trouble completing this request. Please try again."
 
     def process_tool_calls(self, tool_calls: list) -> List[Dict[str, Any]]:
