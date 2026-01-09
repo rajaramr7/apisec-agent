@@ -62,6 +62,13 @@ from ..connectors import (
     parse_jest_tests as connector_parse_jest,
 )
 
+# APIsec Platform connector
+from ..connectors.apisec_platform import (
+    validate_apisec_token as platform_validate_token,
+    upload_to_apisec as platform_upload,
+    get_apisec_token_instructions as platform_get_instructions,
+)
+
 # Global working directory - set by the agent
 _working_dir: str = "."
 
@@ -1373,6 +1380,42 @@ def _detect_github_repo() -> Optional[str]:
 
 
 # =============================================================================
+# APIsec Platform Handlers
+# =============================================================================
+
+def handle_validate_apisec_token(token: str) -> Dict[str, Any]:
+    """Validate an APIsec platform API token."""
+    try:
+        result = platform_validate_token(token)
+        return {"success": True, "data": result}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+def handle_upload_to_apisec(
+    config: Dict[str, Any],
+    api_name: str,
+    token: str,
+    update_existing: bool = False
+) -> Dict[str, Any]:
+    """Upload API config to APIsec platform."""
+    try:
+        result = platform_upload(config, api_name, token, update_existing)
+        return {"success": True, "data": result}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+def handle_get_apisec_token_instructions() -> Dict[str, Any]:
+    """Get instructions for creating APIsec API token."""
+    try:
+        instructions = platform_get_instructions()
+        return {"success": True, "data": {"instructions": instructions}}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+# =============================================================================
 # Tool Handlers Mapping
 # =============================================================================
 
@@ -1415,6 +1458,10 @@ TOOL_HANDLERS: Dict[str, callable] = {
     "fetch_aws_secret": handle_fetch_aws_secret,
     "parse_har_file": handle_parse_har_file,
     "parse_jest_tests": handle_parse_jest_tests,
+    # APIsec Platform tools
+    "validate_apisec_token": handle_validate_apisec_token,
+    "upload_to_apisec": handle_upload_to_apisec,
+    "get_apisec_token_instructions": handle_get_apisec_token_instructions,
 }
 
 

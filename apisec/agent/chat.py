@@ -50,12 +50,17 @@ def print_welcome() -> None:
     console.print()
 
 
-def print_agent_message(message: str) -> None:
+def print_agent_message(message: str, debug: bool = False) -> None:
     """Format and print agent responses with syntax highlighting.
 
     Args:
         message: The agent's response message (may contain markdown)
+        debug: If True, print raw message before rendering
     """
+    if debug or os.environ.get("APISEC_DEBUG", "").lower() in ("1", "true", "yes"):
+        console.print(f"\n[dim][DEBUG] Raw message to display ({len(message)} chars):[/dim]")
+        console.print(f"[dim]{repr(message[:500])}{'...' if len(message) > 500 else ''}[/dim]")
+
     console.print()
 
     # Print header
@@ -206,7 +211,8 @@ def print_help() -> None:
             "  [cyan]history[/cyan]        - Show conversation history\n"
             "  [cyan]clear[/cyan]          - Clear the screen\n"
             "  [cyan]done[/cyan]           - Generate config with current info\n"
-            "  [cyan]config[/cyan]         - Show generated config if available\n\n"
+            "  [cyan]config[/cyan]         - Show generated config if available\n"
+            "  [cyan]security[/cyan]       - Show data handling & privacy info\n\n"
             "[bold]Tips:[/bold]\n\n"
             "  • The agent will automatically scan your repository\n"
             "  • Answer questions to help configure security testing\n"
@@ -271,126 +277,136 @@ def print_goodbye() -> None:
     )
 
 
-def get_grounding_message(working_path: Path) -> str:
-    """Get the initial grounding message for the agent.
+def get_welcome_message(working_path: Path) -> str:
+    """Build welcome message directly from tool registry.
 
-    Dynamically builds capabilities from the tool registry.
+    This is printed directly to the user, NOT passed through the LLM.
+    The LLM only starts after the user provides their first input.
 
     Args:
         working_path: The current working directory path
 
     Returns:
-        The grounding prompt to send to the agent
+        Welcome message to display
     """
-    # Get available tools from registry
     registry = get_registry()
-    tool_info = registry.build_opening_message_tools()
 
-    # Build capabilities list based on actual working tools
+    # Build capabilities list from working tools
     capabilities = []
 
-    # Check for version control tools
-    if registry.is_available("clone_github_repo"):
-        capabilities.append("• GitHub repo or local folder")
-    if registry.is_available("clone_gitlab_repo"):
-        capabilities.append("• GitLab repositories")
-    if registry.is_available("clone_bitbucket_repo"):
-        capabilities.append("• Bitbucket repositories")
-
-    # Check for spec parsing
+    if registry.is_available("scan_repo"):
+        capabilities.append("Scan local folders for API artifacts")
     if registry.is_available("parse_openapi"):
-        capabilities.append("• OpenAPI/Swagger specs")
-
-    # Check for API client tools
-    api_clients = []
-    if registry.is_available("parse_postman") or registry.is_available("parse_postman_collection_v2"):
-        api_clients.append("Postman")
-    if registry.is_available("parse_insomnia"):
-        api_clients.append("Insomnia")
-    if registry.is_available("parse_bruno"):
-        api_clients.append("Bruno")
-    if api_clients:
-        capabilities.append(f"• API clients ({', '.join(api_clients)})")
-
-    # Check for test parsers
-    if registry.is_available("parse_integration_tests"):
-        capabilities.append("• Integration tests (I'll grab the working payloads)")
-    if registry.is_available("parse_jest_tests"):
-        capabilities.append("• Jest/Supertest tests")
+        capabilities.append("Parse OpenAPI/Swagger specs")
     if registry.is_available("parse_fixtures"):
-        capabilities.append("• Test fixtures (I'll find real IDs, not placeholders)")
+        capabilities.append("Extract IDs from test fixtures")
+    if registry.is_available("parse_integration_tests"):
+        capabilities.append("Extract payloads from integration tests")
+    if registry.is_available("validate_token") or registry.is_available("validate_jwt"):
+        capabilities.append("Validate JWT tokens")
+    if registry.is_available("clone_github_repo"):
+        capabilities.append("Clone GitHub repos")
+    if registry.is_available("parse_postman") or registry.is_available("parse_postman_collection_v2"):
+        capabilities.append("Parse Postman collections")
+    if registry.is_available("generate_config"):
+        capabilities.append("Generate APIsec config")
+    if registry.is_available("upload_to_apisec"):
+        capabilities.append("Upload to APIsec platform")
 
-    # Check for environment tools
-    if registry.is_available("parse_env_file_v2") or registry.is_available("scan_env_files"):
-        capabilities.append("• Environment files (.env) with credentials")
-
-    # Check for HAR files
-    if registry.is_available("parse_har_file"):
-        capabilities.append("• HAR files (from browser DevTools/proxies)")
-
-    # Check for API gateways
-    gateways = []
-    if registry.is_available("fetch_kong_config"):
-        gateways.append("Kong")
-    if registry.is_available("fetch_aws_api_gateway"):
-        gateways.append("AWS API Gateway")
-    if gateways:
-        capabilities.append(f"• API gateways ({', '.join(gateways)})")
-
-    # Check for secret managers
-    secrets = []
-    if registry.is_available("fetch_vault_credentials"):
-        secrets.append("Vault")
-    if registry.is_available("fetch_aws_secret"):
-        secrets.append("AWS Secrets")
-    if secrets:
-        capabilities.append(f"• Secret managers ({', '.join(secrets)})")
-
-    capabilities_text = "\n".join(capabilities) if capabilities else "• Local folders and files"
+    # Format capabilities with checkmarks
+    cap_lines = "\n".join(f"  [green]✓[/green] {cap}" for cap in capabilities)
 
     # Build source options
     sources = []
-    sources.append(f"• **Local:** `{working_path}` or any path")
-    if registry.is_available("clone_github_repo"):
-        sources.append("• **GitHub:** `acme-corp/orders-api`")
-    if registry.is_available("clone_gitlab_repo"):
-        sources.append("• **GitLab:** `group/project`")
-    if registry.is_available("clone_bitbucket_repo"):
-        sources.append("• **Bitbucket:** `workspace/repo`")
-    if registry.is_available("fetch_postman_workspace"):
-        sources.append("• **Postman workspace:** provide your Postman API key")
-    sources.append("• **Spec URL:** `https://api.example.com/openapi.json`")
+    sources.append(f"GitHub repo: acme-corp/orders-api")
+    sources.append(f"Local path: {working_path}")
+    if registry.is_available("parse_postman") or registry.is_available("fetch_postman_workspace"):
+        sources.append('Postman: "connect postman"')
 
-    sources_text = "\n".join(sources)
+    source_lines = "\n".join(f"  [cyan]•[/cyan] {src}" for src in sources)
 
-    # Count available tools
-    available_count = len(registry.list_available())
+    return f"""Hey! I'll help you gather API configuration so your security team can run security tests.
 
-    return f"""The user has just started the APIsec agent.
+I'll scan your codebase and pull together:
+  • Endpoints, payloads, and auth tokens that actually work
+  • Test user data for BOLA (broken object-level authorization) testing
+  • Everything packaged into an APIsec config file
 
-Display this exact opening message. Format bullet points on separate lines:
+[bold]What I can do:[/bold]
+{cap_lines}
 
----
+[bold]Point me to your API:[/bold]
+{source_lines}
 
-Hey! I'll generate an API security testing config by scanning your existing code and artifacts.
+[bold]Where should I start?[/bold]"""
 
-**I can pull from what you already have ({available_count} tools available):**
 
-{capabilities_text}
+def get_system_grounding() -> str:
+    """Get grounding instructions for the agent's system prompt.
 
-**By the end, you'll have a config with:**
+    This tells the agent how to behave when the user provides input.
+    It's injected into the first message context, not displayed to user.
+    """
+    return """The user is configuring API security testing. They will provide:
+- A local path to scan
+- A GitHub repo (owner/repo format)
+- A Postman collection
+- Or ask questions
 
-• Real endpoints & payloads that actually work
-• Valid test IDs and tokens (I'll check they're not expired)
-• BOLA tests auto-generated from ownership data
+When they provide a path or repo:
+1. IMMEDIATELY call the appropriate tool (scan_repo, clone_github_repo, etc.)
+2. Show what you found with checkmarks
+3. Ask about gaps
 
-**Let's go! Point me to your code:**
+Do NOT describe what you will do. Just do it."""
 
-{sources_text}
 
----
+def is_security_question(user_message: str) -> bool:
+    """Check if user is asking about security/privacy/data handling."""
+    msg_lower = user_message.lower()
+    security_keywords = [
+        "security", "privacy", "data handling", "where does my data",
+        "is it safe", "how safe", "trust", "secure", "what data",
+        "send my data", "store my", "keep my", "credentials", "secrets",
+        "sensitive", "confidential", "who has access", "third party",
+    ]
+    return any(kw in msg_lower for kw in security_keywords)
 
-Wait for their response. When they provide a path, IMMEDIATELY call `scan_repo` with that path. Do not describe what you will do - just do it."""
+
+def get_security_explanation() -> str:
+    """Get detailed security/privacy explanation for users.
+
+    This is shown when users ask about security, data handling, etc.
+    Critical for enterprise adoption — users need to trust the tool.
+    """
+    return """Here's how I handle your data:
+
+**What stays local:**
+  • Generated config files (.apisec/config.yaml)
+  • Your source code — I read but don't transmit it
+  • Cloned repos (in temp folders, cleaned up after)
+
+**What goes to OpenAI:**
+  • Our conversation (including any tokens/secrets you share)
+  • This is standard for any LLM-based tool
+  • OpenAI's API has enterprise data handling policies
+
+**What goes to APIsec:**
+  • Your config file — ONLY when you explicitly say "yes" to upload
+  • Requires your APIsec API token
+  • Creates the API in YOUR tenant
+
+**What I don't do:**
+  • Store credentials between sessions
+  • Send data anywhere without asking
+  • Access files you don't point me to
+
+**Recommendations:**
+  • Use test/staging tokens, not production
+  • Review generated configs before uploading
+  • Rotate tokens periodically
+
+Does this address your concerns? Happy to clarify anything."""
 
 
 def run_interactive_chat(working_dir: str = ".", api_key: Optional[str] = None, model: Optional[str] = None) -> None:
@@ -410,10 +426,15 @@ def run_interactive_chat(working_dir: str = ".", api_key: Optional[str] = None, 
     # Resolve working directory
     working_path = Path(working_dir).resolve()
 
-    # Print welcome
+    # Print welcome header
     print_welcome()
 
-    # Create agent
+    # Print welcome message directly (NOT through LLM)
+    welcome_msg = get_welcome_message(working_path)
+    console.print(welcome_msg)
+    console.print()
+
+    # Create agent (but don't call it yet - wait for user input)
     try:
         agent = APIsecAgent(
             openai_api_key=api_key,
@@ -425,15 +446,8 @@ def run_interactive_chat(working_dir: str = ".", api_key: Optional[str] = None, 
         print_error(f"Failed to initialize agent: {e}")
         sys.exit(1)
 
-    # Send grounding message - ask ONE question first
-    with print_thinking():
-        try:
-            initial_response = agent.chat(get_grounding_message(working_path))
-        except Exception as e:
-            print_error(f"Failed to start agent: {e}")
-            sys.exit(1)
-
-    print_agent_message(initial_response)
+    # Track if this is the first user message (to add grounding context)
+    first_message = True
 
     # Main chat loop
     while True:
@@ -473,8 +487,21 @@ def run_interactive_chat(working_dir: str = ".", api_key: Optional[str] = None, 
                     print_warning("No configuration generated yet. Continue the conversation to generate one.")
                 continue
 
+            if cmd == "security":
+                # Direct security explanation without going through LLM
+                console.print()
+                console.print(Markdown(get_security_explanation()))
+                console.print()
+                continue
+
             if cmd == "done":
                 user_input = "Please generate the APIsec configuration file now with what we have so far."
+
+            # Add grounding context to first message
+            if first_message:
+                grounding = get_system_grounding()
+                user_input = f"[Context: {grounding}]\n\nUser says: {user_input}"
+                first_message = False
 
             # Send message to agent
             with print_thinking():
@@ -530,12 +557,17 @@ def run_interactive_chat_verbose(working_dir: str = ".", api_key: Optional[str] 
     # Resolve working directory
     working_path = Path(working_dir).resolve()
 
-    # Print welcome
+    # Print welcome header
     print_welcome()
     print_info("Verbose mode enabled")
     console.print()
 
-    # Create verbose agent
+    # Print welcome message directly (NOT through LLM)
+    welcome_msg = get_welcome_message(working_path)
+    console.print(welcome_msg)
+    console.print()
+
+    # Create verbose agent (but don't call it yet - wait for user input)
     try:
         agent = VerboseAPIsecAgent(
             openai_api_key=api_key,
@@ -547,15 +579,8 @@ def run_interactive_chat_verbose(working_dir: str = ".", api_key: Optional[str] 
         print_error(f"Failed to initialize agent: {e}")
         sys.exit(1)
 
-    # Send grounding message - ask ONE question first
-    with print_thinking():
-        try:
-            initial_response = agent.chat(get_grounding_message(working_path))
-        except Exception as e:
-            print_error(f"Failed to start agent: {e}")
-            sys.exit(1)
-
-    print_agent_message(initial_response)
+    # Track if this is the first user message (to add grounding context)
+    first_message = True
 
     # Main chat loop (same as non-verbose)
     while True:
@@ -592,8 +617,21 @@ def run_interactive_chat_verbose(working_dir: str = ".", api_key: Optional[str] 
                     print_warning("No configuration generated yet.")
                 continue
 
+            if cmd == "security":
+                # Direct security explanation without going through LLM
+                console.print()
+                console.print(Markdown(get_security_explanation()))
+                console.print()
+                continue
+
             if cmd == "done":
                 user_input = "Please generate the APIsec configuration file now with what we have so far."
+
+            # Add grounding context to first message
+            if first_message:
+                grounding = get_system_grounding()
+                user_input = f"[Context: {grounding}]\n\nUser says: {user_input}"
+                first_message = False
 
             console.print()
             with print_thinking():

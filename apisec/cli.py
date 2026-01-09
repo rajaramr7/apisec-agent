@@ -409,6 +409,93 @@ def discover(path: str, output_json: bool):
         sys.exit(1)
 
 
+@cli.command()
+@click.argument("config_path", type=click.Path(exists=True))
+@click.option(
+    "--token",
+    "-t",
+    envvar="APISEC_TOKEN",
+    help="APIsec API token (or set APISEC_TOKEN env var)",
+)
+@click.option(
+    "--update",
+    "-u",
+    is_flag=True,
+    help="Update existing API if it exists",
+)
+@click.option(
+    "--name",
+    "-n",
+    help="Override API name (defaults to name in config)",
+)
+def upload(config_path: str, token: str, update: bool, name: str):
+    """Upload a config file to APIsec platform.
+
+    Uploads your generated config to APIsec so you can run security scans.
+
+    \b
+    Example:
+        apisec upload .apisec/config.yaml
+        apisec upload config.yaml --token apt_xxx
+        apisec upload config.yaml --update
+        apisec upload config.yaml --name "My API"
+    """
+    import yaml
+    from .connectors.apisec_platform import APIsecPlatformConnector
+
+    # Load config file
+    try:
+        with open(config_path, 'r') as f:
+            config = yaml.safe_load(f)
+    except yaml.YAMLError as e:
+        click.echo(click.style(f"Error parsing YAML: {e}", fg="red"))
+        sys.exit(1)
+    except Exception as e:
+        click.echo(click.style(f"Error reading file: {e}", fg="red"))
+        sys.exit(1)
+
+    # Get API name from config or override
+    api_name = name or config.get('api_name', config.get('name', 'unnamed-api'))
+
+    # Get token - prompt if not provided
+    if not token:
+        connector = APIsecPlatformConnector()
+        click.echo(connector.get_token_instructions())
+        click.echo()
+        token = click.prompt('', hide_input=False)
+
+    connector = APIsecPlatformConnector(api_token=token)
+
+    # Validate token
+    click.echo('Validating token...')
+    is_valid, tenant_name, error = connector.validate_token(token)
+
+    if not is_valid:
+        click.echo(click.style(f"✗ {error}", fg="red"))
+        sys.exit(1)
+
+    click.echo(click.style(f"✓ Connected to tenant: {tenant_name}", fg="green"))
+
+    # Upload config
+    click.echo(f'Uploading {api_name}...')
+    result = connector.upload_config(config, api_name, update_existing=update)
+
+    if result.success:
+        click.echo()
+        click.echo(click.style("✓ Upload complete!", fg="green", bold=True))
+        click.echo()
+        click.echo(f"{api_name} is now in APIsec and ready for security scanning.")
+        click.echo()
+        click.echo(f"  • View: {result.api_url}")
+        click.echo(f"  • Scan: {result.scan_url}")
+        click.echo()
+    else:
+        click.echo(click.style(f"✗ {result.error}", fg="red"))
+        if 'already exists' in result.error:
+            click.echo("Use --update to overwrite the existing config.")
+        sys.exit(1)
+
+
 # Keep 'main' as an alias for backward compatibility
 main = cli
 

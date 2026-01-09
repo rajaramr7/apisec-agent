@@ -55,6 +55,10 @@ from ..agent.tools import (
     handle_fetch_aws_secret,
     handle_parse_har_file,
     handle_parse_jest_tests,
+    # APIsec Platform
+    handle_validate_apisec_token,
+    handle_upload_to_apisec,
+    handle_get_apisec_token_instructions,
 )
 
 
@@ -625,6 +629,60 @@ def _register_all_tools() -> None:
                 "path": {"type": "string", "description": "Path to test directory or file"}
             },
             "required": ["path"],
+        },
+    )
+
+    # ==========================================================================
+    # APISEC PLATFORM - WORKING
+    # ==========================================================================
+
+    registry.register(
+        name="validate_apisec_token",
+        function=handle_validate_apisec_token,
+        description="Validate APIsec platform API token and get tenant info.",
+        status=ToolStatus.WORKING,
+        category="platform",
+        requires_auth=True,
+        auth_types=["apisec_token"],
+        parameters={
+            "type": "object",
+            "properties": {
+                "token": {"type": "string", "description": "APIsec API token"}
+            },
+            "required": ["token"],
+        },
+    )
+
+    registry.register(
+        name="upload_to_apisec",
+        function=handle_upload_to_apisec,
+        description="Upload API config to APIsec platform for security scanning.",
+        status=ToolStatus.WORKING,
+        category="platform",
+        requires_auth=True,
+        auth_types=["apisec_token"],
+        parameters={
+            "type": "object",
+            "properties": {
+                "config": {"type": "object", "description": "API configuration dict"},
+                "api_name": {"type": "string", "description": "Name for the API in APIsec"},
+                "token": {"type": "string", "description": "APIsec API token"},
+                "update_existing": {"type": "boolean", "description": "Update if API exists"},
+            },
+            "required": ["config", "api_name", "token"],
+        },
+    )
+
+    registry.register(
+        name="get_apisec_token_instructions",
+        function=handle_get_apisec_token_instructions,
+        description="Get instructions for creating an APIsec API token.",
+        status=ToolStatus.WORKING,
+        category="platform",
+        parameters={
+            "type": "object",
+            "properties": {},
+            "required": [],
         },
     )
 

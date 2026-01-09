@@ -15,108 +15,44 @@ from typing import List, Tuple
 
 
 # Patterns that indicate consultant-speak (describing instead of doing)
+# KEEP THIS LIST TIGHT - only clear bullshit patterns
+# These should only trigger when user asked to DO something and agent describes instead
 BULLSHIT_PATTERNS = [
-    # "I will/would/can X by Y" patterns
-    r"\bI will\b.{1,50}\bby\b",
-    r"\bI would\b.{1,50}\bby\b",
-    r"\bI can\b.{1,50}\bby\b",
-    r"\bI'll\b.{1,50}\bby\b",
-
-    # Process description phrases
-    r"\bThis involves\b",
-    r"\bThe process (?:is|involves|includes)\b",
-    r"\bHere'?s how I (?:will|would)\b",
-    r"\bThis ensures\b",  # No "that" required
-    r"\bThis means (?:that )?I\b",
-
-    # "I will verb" patterns (common consultant-speak)
-    r"\bI (?:will|would) implement\b",
-    r"\bI (?:will|would) validate\b",
-    r"\bI (?:will|would) parse\b",
-    r"\bI (?:will|would) extract\b",
-    r"\bI (?:will|would) cross-reference\b",
-    r"\bI (?:will|would) check\b",
-    r"\bI (?:will|would) analyze\b",
-    r"\bI (?:will|would) process\b",
-    r"\bI (?:will|would) scan\b",
-    r"\bI (?:will|would) fetch\b",
-    r"\bI (?:will|would) clone\b",
-
-    # Explaining methodology
-    r"\bLet me explain (?:how|what)\b",
-    r"\bThe (?:approach|strategy|method) (?:is|involves)\b",
-    r"\bBy (?:doing|checking|validating|parsing)\b",
-
-    # Sequential process descriptions
+    # Sequential process descriptions (clear bullshit when action requested)
     r"\bFirst,?\s+I (?:will|would)\b",
     r"\bNext,?\s+I (?:will|would)\b",
     r"\bThen,?\s+I (?:will|would)\b",
     r"\bFinally,?\s+I (?:will|would)\b",
 
-    # Numbered steps (process explanation)
+    # Numbered steps (clear process explanation)
     r"\bStep \d+[:\s]\b",
-    r"\d+\.\s*\*\*[A-Z][^*\n]+\*\*",  # Markdown numbered bold headers
+    r"\d+\.\s*\*\*[A-Z][^*\n]+\*\*",  # Markdown numbered bold headers like "1. **Validation**"
 
-    # Future tense action without doing
-    r"\bI'm going to (?:validate|parse|check|analyze|scan)\b",
-    r"\bI'll (?:start|begin) by\b",
-
-    # "How it works" explanations (when asked "how did you do X")
+    # Clear process description phrases
+    r"\bThe process (?:is|involves|includes)\b",
+    r"\bThis ensures that\b",
     r"\binvolved the following\b",
     r"\bthe following steps\b",
-    r"\bhere'?s (?:how|what) (?:it|the|this) works\b",
-    r"\bthe validation involved\b",
-    r"\bthe process worked\b",
-    r"\bworked by\b.{1,30}\b(?:first|then|next)\b",
 
-    # Past-tense process explanation (describing what "happened" theoretically)
-    r"\d+\.\s*(?:Token|Format|Decoding|Extraction|Check|Validation)\b",
-    r"\bI (?:checked|validated|parsed|extracted) (?:the|each|all)\b.{1,50}\bby\b",
-
-    # Theoretical/hypothetical explanations
-    r"\bwould (?:work|happen|be done) by\b",
-    r"\btypically involves\b",
-    r"\bgenerally works by\b",
-    r"\bthe way (?:it|this) works\b",
-
-    # Document-style headers (dead giveaway of process explanation)
+    # Document-style headers (dead giveaway)
     r"\bProcess Overview\b",
-    r"\bOverview\b.*:",
     r"\bConclusion\b",
-    r"\bSummary\b.*:",
-    r"\bIn summary\b",
 
-    # Systematic/methodical explanations
+    # Systematic/methodical jargon
     r"\bThis systematic approach\b",
-    r"\bThis approach ensures\b",
     r"\bThis methodology\b",
-    r"\bsystematic (?:validation|check|process)\b",
 
-    # Bullet list with "Check/Extraction/Validation" labels
+    # Bullet list with process labels
     r"[-•]\s*\w+\s+Check:",
     r"[-•]\s*\w+\s+Extraction:",
     r"[-•]\s*\w+\s+Validation:",
-    r"[-•]\s*(?:Success|Validity|Format|Token)\s+Check\b",
 
-    # "The function does X" explanations
-    r"\bThe function (?:checks|verifies|validates|extracts|parses)\b",
-    r"\bThe tool (?:checks|verifies|validates|extracts|parses)\b",
-    r"\bEach token was\b",
-    r"\bwas submitted to\b",
+    # "I will X by Y" when describing instead of doing
+    r"\bI will\b.{1,30}\bby\b.{1,30}\b(?:checking|validating|parsing|analyzing)\b",
 
-    # Breakdown/walkthrough language
+    # Breakdown/walkthrough (when user asked for action)
     r"\bHere'?s a (?:clear )?breakdown\b",
     r"\bLet me walk you through\b",
-    r"\bHere'?s (?:how|what) happens\b",
-
-    # "My approach" explanations
-    r"\bmy approach (?:includes|involves|is)\b",
-    r"\bBy combining (?:these|the) (?:methods|steps|approaches)\b",
-    r"\bthe following steps\b",
-    r"\bWould you like (?:more )?(?:elaboration|details)\b",
-    r"\bmore elaboration on\b",
-    r"\bany specific (?:step|area|part)\b",
-    r"\bLet me (?:outline|describe|explain)\b",
 ]
 
 # Patterns that indicate actual action/results (not just describing)
@@ -181,6 +117,100 @@ QUESTION_PATTERNS = [
     r"please (?:provide|share|give)",
 ]
 
+# Patterns indicating user is asking for INFO, not asking agent to DO something
+# BE VERY INCLUSIVE - better to allow explanations than to block legitimate questions
+INFO_REQUEST_PATTERNS = [
+    # Capability questions
+    "what can you",
+    "what do you",
+    "what are you",
+    "what all",
+    "whats your",
+    "what's your",
+    "who are you",
+    "tell me about",
+    "explain",
+    "how do you",
+    "how does",
+    "how will you",
+    "how would you",
+    "capabilities",
+    "features",
+    "help",
+    "what is your",
+    "describe",
+    "what tools",
+    "list",
+    "show me what",
+    "what kind of",
+    "how can you",
+    "purpose",
+
+    # Source/integration questions - VERY INCLUSIVE
+    "what sources",
+    "which sources",
+    "where can you",
+    "where do you",
+    "from where",
+    "integrate",  # catches "integrate to", "integrations", etc.
+    "connector",  # catches "connectors"
+    "gather",
+    "pull from",
+    "get data",
+    "what can you access",
+    "what can you read",
+    "what do you support",
+    "what formats",
+    "supported",
+    "work with",
+    "compatible",
+    "sources",
+
+    # User describing their situation
+    "i have",
+    "we have",
+    "my code",
+    "my api",
+    "my repo",
+    "our code",
+    "our api",
+
+    # Security/trust questions
+    "security",
+    "privacy",
+    "safe",
+    "trust",
+    "data handling",
+    "where does my data",
+    "what do you do with",
+    "credentials",
+    "secrets",
+    "confidential",
+    "encrypt",
+    "compliance",
+    "gdpr",
+    "soc",
+
+    # How it works questions
+    "how does this work",
+    "how do you work",
+    "what happens when",
+    "walk me through",
+    "what's the process",
+    "how will",
+    "what will",
+]
+
+
+def is_information_request(user_message: str) -> bool:
+    """Check if user is asking for info/help, not asking to DO something.
+
+    When user asks "what can you do?" they WANT an explanation.
+    We should NOT validate these as bullshit.
+    """
+    msg_lower = user_message.lower()
+    return any(pattern in msg_lower for pattern in INFO_REQUEST_PATTERNS)
+
 
 def count_matches(text: str, patterns: List[str]) -> int:
     """Count how many patterns match in the text."""
@@ -194,7 +224,7 @@ def count_matches(text: str, patterns: List[str]) -> int:
 def get_corrected_response(user_message: str) -> str:
     """Generate context-appropriate rejection message.
 
-    Instead of a hardcoded response, this returns a one-liner
+    Called when bullshit is detected. Returns a one-liner
     that offers to demonstrate based on what the user asked about.
     """
     msg_lower = user_message.lower()
@@ -209,8 +239,12 @@ def get_corrected_response(user_message: str) -> str:
         return "Give me a token and I'll validate it."
     elif "bola" in msg_lower or "authorization" in msg_lower:
         return "Give me test fixtures with user ownership and I'll identify BOLA test cases."
-    elif "repo" in msg_lower or "scan" in msg_lower or "github" in msg_lower:
+    elif "github" in msg_lower:
+        return "Give me a GitHub repo (owner/repo) and I'll clone and scan it."
+    elif "repo" in msg_lower:
         return "Give me a repo URL or local path and I'll scan it."
+    elif "scan" in msg_lower:
+        return "Give me a folder path or repo URL and I'll scan it."
     elif "fixture" in msg_lower:
         return "Give me a fixtures directory and I'll extract IDs and ownership."
     elif "openapi" in msg_lower or "swagger" in msg_lower:
@@ -221,8 +255,10 @@ def get_corrected_response(user_message: str) -> str:
         return "Give me an .env file path and I'll parse the credentials."
     elif "test" in msg_lower:
         return "Give me a test file and I'll extract the working payloads."
+    elif "config" in msg_lower:
+        return "Give me a repo or folder to scan and I'll generate a config."
     else:
-        return "Give me something specific and I'll run a tool on it."
+        return "What would you like me to do? Give me a repo, folder, or file to work with."
 
 
 def is_legitimate_limitation(text: str) -> bool:
@@ -245,7 +281,10 @@ def validate_response(
     user_message: str = "",
 ) -> Tuple[bool, str]:
     """
-    Validate that response shows action, not consultant-speak.
+    Validate response - but BE LENIENT. Only catch clear bullshit.
+
+    The goal is to catch consultant-speak when user asked to DO something
+    and agent described instead of doing. NOT to block helpful explanations.
 
     Args:
         response: The LLM's response text
@@ -254,41 +293,44 @@ def validate_response(
 
     Returns:
         Tuple of (is_valid, corrected_response)
-        - is_valid: True if response is honest/actionable
+        - is_valid: True if response is acceptable
         - corrected_response: Original or corrected response
     """
-    # If tools were called, response is valid (showing real results)
+    # ALWAYS allow responses to information requests
+    # This is the FIRST check - be very inclusive about what counts as info request
+    if user_message and is_information_request(user_message):
+        return True, response
+
+    # ALWAYS allow if tools were called - agent did something
     if len(tools_called) > 0:
         return True, response
 
-    # If honestly explaining limitations, that's fine
+    # ALWAYS allow honest limitations
     if is_legitimate_limitation(response):
         return True, response
 
-    # Score the response FIRST - bullshit check takes priority
-    bullshit_score = count_matches(response, BULLSHIT_PATTERNS)
-    action_score = count_matches(response, ACTION_INDICATORS)
-
-    # STRICT: Any bullshit pattern when no tools were called = fail
-    # Even if it ends with a question, consultant-speak with trailing "?" is still BS
-    if bullshit_score >= 1:
-        # Context-aware rejection - one line offering to demonstrate
-        corrected = get_corrected_response(user_message)
-        return False, corrected
-
-    # Only allow pure questions (no bullshit patterns)
+    # ALWAYS allow questions - agent is asking for clarification
     if is_asking_question(response):
         return True, response
 
-    # Very short responses with no bullshit patterns are OK (simple acknowledgments)
-    if len(response) < 100 and bullshit_score == 0:
+    # ALWAYS allow short-to-medium responses (not bullshit, just concise)
+    if len(response) < 300:
         return True, response
 
-    # Long response with no tools called and no action indicators = suspicious
-    if len(response) > 300 and action_score == 0:
+    # ALWAYS allow responses with action/result indicators
+    action_score = count_matches(response, ACTION_INDICATORS)
+    if action_score > 0:
+        return True, response
+
+    # Only NOW check for bullshit - require HIGH score (3+)
+    bullshit_score = count_matches(response, BULLSHIT_PATTERNS)
+
+    # Must have 3+ bullshit patterns to be rejected
+    if bullshit_score >= 3:
         corrected = get_corrected_response(user_message)
         return False, corrected
 
+    # Default: ALLOW the response
     return True, response
 
 
