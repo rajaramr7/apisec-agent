@@ -491,6 +491,7 @@ Only now ask questions — and only about what's missing.
             is_valid, validated_content = validate_response(
                 final_content,
                 self._tools_called_this_turn,
+                user_message,  # Pass context for context-aware rejection
             )
 
             if debug:

@@ -108,6 +108,15 @@ BULLSHIT_PATTERNS = [
     r"\bHere'?s a (?:clear )?breakdown\b",
     r"\bLet me walk you through\b",
     r"\bHere'?s (?:how|what) happens\b",
+
+    # "My approach" explanations
+    r"\bmy approach (?:includes|involves|is)\b",
+    r"\bBy combining (?:these|the) (?:methods|steps|approaches)\b",
+    r"\bthe following steps\b",
+    r"\bWould you like (?:more )?(?:elaboration|details)\b",
+    r"\bmore elaboration on\b",
+    r"\bany specific (?:step|area|part)\b",
+    r"\bLet me (?:outline|describe|explain)\b",
 ]
 
 # Patterns that indicate actual action/results (not just describing)
@@ -182,6 +191,40 @@ def count_matches(text: str, patterns: List[str]) -> int:
     return count
 
 
+def get_corrected_response(user_message: str) -> str:
+    """Generate context-appropriate rejection message.
+
+    Instead of a hardcoded response, this returns a one-liner
+    that offers to demonstrate based on what the user asked about.
+    """
+    msg_lower = user_message.lower()
+
+    if "postman" in msg_lower:
+        return "Give me a Postman collection file and I'll parse it."
+    elif "insomnia" in msg_lower:
+        return "Give me an Insomnia export and I'll parse it."
+    elif "bruno" in msg_lower:
+        return "Give me a Bruno collection and I'll parse it."
+    elif "token" in msg_lower or "jwt" in msg_lower:
+        return "Give me a token and I'll validate it."
+    elif "bola" in msg_lower or "authorization" in msg_lower:
+        return "Give me test fixtures with user ownership and I'll identify BOLA test cases."
+    elif "repo" in msg_lower or "scan" in msg_lower or "github" in msg_lower:
+        return "Give me a repo URL or local path and I'll scan it."
+    elif "fixture" in msg_lower:
+        return "Give me a fixtures directory and I'll extract IDs and ownership."
+    elif "openapi" in msg_lower or "swagger" in msg_lower:
+        return "Give me an OpenAPI spec and I'll parse it."
+    elif "har" in msg_lower:
+        return "Give me a HAR file and I'll extract the requests."
+    elif "env" in msg_lower or "environment" in msg_lower:
+        return "Give me an .env file path and I'll parse the credentials."
+    elif "test" in msg_lower:
+        return "Give me a test file and I'll extract the working payloads."
+    else:
+        return "Give me something specific and I'll run a tool on it."
+
+
 def is_legitimate_limitation(text: str) -> bool:
     """Check if response is honestly explaining a limitation."""
     text_lower = text.lower()
@@ -199,6 +242,7 @@ def is_asking_question(text: str) -> bool:
 def validate_response(
     response: str,
     tools_called: List[str],
+    user_message: str = "",
 ) -> Tuple[bool, str]:
     """
     Validate that response shows action, not consultant-speak.
@@ -206,6 +250,7 @@ def validate_response(
     Args:
         response: The LLM's response text
         tools_called: List of tool names called during this turn
+        user_message: The original user message (for context-aware rejection)
 
     Returns:
         Tuple of (is_valid, corrected_response)
@@ -220,22 +265,20 @@ def validate_response(
     if is_legitimate_limitation(response):
         return True, response
 
-    # If asking a clarifying question, that's fine
-    if is_asking_question(response):
-        return True, response
-
-    # Score the response
+    # Score the response FIRST - bullshit check takes priority
     bullshit_score = count_matches(response, BULLSHIT_PATTERNS)
     action_score = count_matches(response, ACTION_INDICATORS)
 
     # STRICT: Any bullshit pattern when no tools were called = fail
-    # The only valid no-tool responses are: limitations, questions, or very short with no patterns
+    # Even if it ends with a question, consultant-speak with trailing "?" is still BS
     if bullshit_score >= 1:
-        # Even 1 bullshit pattern is enough to reject
-        corrected = """I called validate_token. Give me a token and I'll show you the actual result.
-
-I don't explain processes - I run tools and show output."""
+        # Context-aware rejection - one line offering to demonstrate
+        corrected = get_corrected_response(user_message)
         return False, corrected
+
+    # Only allow pure questions (no bullshit patterns)
+    if is_asking_question(response):
+        return True, response
 
     # Very short responses with no bullshit patterns are OK (simple acknowledgments)
     if len(response) < 100 and bullshit_score == 0:
@@ -243,9 +286,7 @@ I don't explain processes - I run tools and show output."""
 
     # Long response with no tools called and no action indicators = suspicious
     if len(response) > 300 and action_score == 0:
-        corrected = """Give me something specific to work with and I'll run the tool and show you results.
-
-I don't explain hypothetical processes."""
+        corrected = get_corrected_response(user_message)
         return False, corrected
 
     return True, response
