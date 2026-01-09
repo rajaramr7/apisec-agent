@@ -23,7 +23,8 @@ class TestValidateResponse:
 
         is_valid, response = validate_response(bullshit_response, tools_called=[])
         assert is_valid is False
-        assert "describing" in response.lower() or "actually" in response.lower()
+        # New strict response mentions running tools, not explaining
+        assert "tool" in response.lower() or "run" in response.lower()
 
     def test_allows_real_results(self):
         """Test that responses with actual tool results pass."""
@@ -225,16 +226,17 @@ class TestEdgeCases:
 
     def test_mixed_content(self):
         """Test response with both action and consultant speak."""
-        # This has both patterns - should pass because of action indicators
+        # STRICT: Any bullshit pattern = reject, even with action indicators
+        # If no tools were called, we shouldn't be explaining what we "will" do
         response = """✓ Found 5 endpoints
 
 I will now analyze each endpoint by checking the security configuration.
 This ensures we identify potential vulnerabilities."""
 
         is_valid, corrected = validate_response(response, tools_called=[])
-        # With high action score, might pass despite some bullshit
-        # This tests the balance between the two
-        assert is_valid is True or "describing" in corrected.lower()
+        # Strict mode: bullshit patterns cause rejection even with action indicators
+        assert is_valid is False
+        assert "tool" in corrected.lower() or "run" in corrected.lower()
 
     def test_question_with_explanation(self):
         """Test that questions with explanations pass."""

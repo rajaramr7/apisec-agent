@@ -26,7 +26,7 @@ BULLSHIT_PATTERNS = [
     r"\bThis involves\b",
     r"\bThe process (?:is|involves|includes)\b",
     r"\bHere'?s how I (?:will|would)\b",
-    r"\bThis ensures that\b",
+    r"\bThis ensures\b",  # No "that" required
     r"\bThis means (?:that )?I\b",
 
     # "I will verb" patterns (common consultant-speak)
@@ -78,6 +78,36 @@ BULLSHIT_PATTERNS = [
     r"\btypically involves\b",
     r"\bgenerally works by\b",
     r"\bthe way (?:it|this) works\b",
+
+    # Document-style headers (dead giveaway of process explanation)
+    r"\bProcess Overview\b",
+    r"\bOverview\b.*:",
+    r"\bConclusion\b",
+    r"\bSummary\b.*:",
+    r"\bIn summary\b",
+
+    # Systematic/methodical explanations
+    r"\bThis systematic approach\b",
+    r"\bThis approach ensures\b",
+    r"\bThis methodology\b",
+    r"\bsystematic (?:validation|check|process)\b",
+
+    # Bullet list with "Check/Extraction/Validation" labels
+    r"[-•]\s*\w+\s+Check:",
+    r"[-•]\s*\w+\s+Extraction:",
+    r"[-•]\s*\w+\s+Validation:",
+    r"[-•]\s*(?:Success|Validity|Format|Token)\s+Check\b",
+
+    # "The function does X" explanations
+    r"\bThe function (?:checks|verifies|validates|extracts|parses)\b",
+    r"\bThe tool (?:checks|verifies|validates|extracts|parses)\b",
+    r"\bEach token was\b",
+    r"\bwas submitted to\b",
+
+    # Breakdown/walkthrough language
+    r"\bHere'?s a (?:clear )?breakdown\b",
+    r"\bLet me walk you through\b",
+    r"\bHere'?s (?:how|what) happens\b",
 ]
 
 # Patterns that indicate actual action/results (not just describing)
@@ -198,40 +228,24 @@ def validate_response(
     bullshit_score = count_matches(response, BULLSHIT_PATTERNS)
     action_score = count_matches(response, ACTION_INDICATORS)
 
-    # Even short responses can be consultant-speak if they have patterns
-    # Only skip validation for very short responses with no bullshit patterns
+    # STRICT: Any bullshit pattern when no tools were called = fail
+    # The only valid no-tool responses are: limitations, questions, or very short with no patterns
+    if bullshit_score >= 1:
+        # Even 1 bullshit pattern is enough to reject
+        corrected = """I called validate_token. Give me a token and I'll show you the actual result.
+
+I don't explain processes - I run tools and show output."""
+        return False, corrected
+
+    # Very short responses with no bullshit patterns are OK (simple acknowledgments)
     if len(response) < 100 and bullshit_score == 0:
         return True, response
 
-    # High bullshit with no action indicators = caught
-    if bullshit_score >= 2 and action_score == 0:
-        corrected = """I caught myself describing what I *would* do instead of actually doing it.
+    # Long response with no tools called and no action indicators = suspicious
+    if len(response) > 300 and action_score == 0:
+        corrected = """Give me something specific to work with and I'll run the tool and show you results.
 
-Let me be direct:
-- If you give me something specific, I'll run a tool and show real results
-- If I can't do it, I'll tell you honestly
-
-What would you like me to actually try?"""
-        return False, corrected
-
-    # Very high bullshit score even with some action
-    if bullshit_score >= 4:
-        corrected = """I was over-explaining. Let me be more direct.
-
-What do you need? Give me something specific and I'll either:
-- Do it and show results
-- Tell you I can't do it yet"""
-        return False, corrected
-
-    # Single strong bullshit pattern in short response = likely bad
-    if bullshit_score >= 1 and len(response) < 200 and action_score == 0:
-        corrected = """I caught myself describing what I *would* do instead of actually doing it.
-
-Let me be direct:
-- If you give me something specific, I'll run a tool and show real results
-- If I can't do it, I'll tell you honestly
-
-What would you like me to actually try?"""
+I don't explain hypothetical processes."""
         return False, corrected
 
     return True, response
