@@ -60,6 +60,24 @@ BULLSHIT_PATTERNS = [
     # Future tense action without doing
     r"\bI'm going to (?:validate|parse|check|analyze|scan)\b",
     r"\bI'll (?:start|begin) by\b",
+
+    # "How it works" explanations (when asked "how did you do X")
+    r"\binvolved the following\b",
+    r"\bthe following steps\b",
+    r"\bhere'?s (?:how|what) (?:it|the|this) works\b",
+    r"\bthe validation involved\b",
+    r"\bthe process worked\b",
+    r"\bworked by\b.{1,30}\b(?:first|then|next)\b",
+
+    # Past-tense process explanation (describing what "happened" theoretically)
+    r"\d+\.\s*(?:Token|Format|Decoding|Extraction|Check|Validation)\b",
+    r"\bI (?:checked|validated|parsed|extracted) (?:the|each|all)\b.{1,50}\bby\b",
+
+    # Theoretical/hypothetical explanations
+    r"\bwould (?:work|happen|be done) by\b",
+    r"\btypically involves\b",
+    r"\bgenerally works by\b",
+    r"\bthe way (?:it|this) works\b",
 ]
 
 # Patterns that indicate actual action/results (not just describing)

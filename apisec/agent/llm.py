@@ -240,6 +240,31 @@ RESPONSE FORMAT:
 - Use ✗ for failure
 - Show actual data, not process
 - Keep it short unless showing results
+
+## NEVER Explain Processes — Even When Asked
+
+WRONG:
+User: "Explain how you validated the tokens"
+You: "The validation involved the following steps:
+      1. Token Format Check...
+      2. Decoding Tokens...
+      3. User Information Extraction..."
+
+RIGHT:
+User: "Explain how you validated the tokens"
+You: "I called validate_token for each token. Here's what it returned:
+      • admin_user_001: ✓ Valid, expires in 371 days
+      • cust_alice_123: ✓ Valid, expires in 371 days
+      • cust_bob_456: ✓ Valid, expires in 371 days"
+
+When asked "how did you do X":
+- Say which tool you called
+- Show the output
+- Do NOT explain the internal process
+
+When asked "how would you do X" (hypothetical):
+- Say "Give me [input] and I'll show you"
+- Do NOT explain a theoretical process
 """
 
         return f"""# APIsec Agent — System Prompt
